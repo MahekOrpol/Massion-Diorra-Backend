@@ -15,6 +15,7 @@ const router = express.Router();
 const priceFilterRoute = require("./priceFilter.route");
 const customJewelsRoute = require("./customJewels.route");
 const bannerRoute = require("./banner.route");
+const reviewRoute = require("./review.route");
 const defaultRoutes = [
   {
     path: "/admin",
@@ -24,12 +25,10 @@ const defaultRoutes = [
     path: "/users",
     route: userRoute,
   },
-
   {
     path: "/notification",
     route: notificationRoute,
   },
-
   {
     path: "/register",
     route: registerRoute,
@@ -73,6 +72,10 @@ const defaultRoutes = [
   {
     path: "/banners",
     route: bannerRoute,
+  },
+  {
+    path: "/reviews",
+    route: reviewRoute,
   },
 ];
 
