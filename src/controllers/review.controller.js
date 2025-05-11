@@ -67,8 +67,8 @@ const getReviews = {
     const total = await Review.countDocuments(filter);
 
     return res.send({
-      currentPage: parseInt(page),
-      perPage: parseInt(limit),
+      page: parseInt(page),
+      limit: parseInt(limit),
       totalReviews: total,
       reviews,
     });

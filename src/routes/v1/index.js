@@ -16,6 +16,7 @@ const priceFilterRoute = require("./priceFilter.route");
 const customJewelsRoute = require("./customJewels.route");
 const bannerRoute = require("./banner.route");
 const reviewRoute = require("./review.route");
+const testimonialRoute = require("./testimonial.route");
 const defaultRoutes = [
   {
     path: "/admin",
@@ -76,6 +77,10 @@ const defaultRoutes = [
   {
     path: "/reviews",
     route: reviewRoute,
+  },
+  {
+    path: "/testimonials",
+    route: testimonialRoute,
   },
 ];
 

@@ -77,20 +77,22 @@ const createProduct = {
       image,
       gender,
       hasVariations,
-      variations
+      variations,
     } = req.body;
-
 
     hasVariations = String(hasVariations).trim().toLowerCase() === "true";
 
-    console.log('String(hasVariations).trim().toLowerCase() === true',   String(hasVariations).trim().toLowerCase() === "true")
+    console.log(
+      "String(hasVariations).trim().toLowerCase() === true",
+      String(hasVariations).trim().toLowerCase() === "true"
+    );
 
-    if (hasVariations && typeof variations === "string") { 
+    if (hasVariations && typeof variations === "string") {
       variations = JSON.parse(variations);
     } else {
       variations = [];
     }
-    console.log('typeof variations', typeof variations)
+    console.log("typeof variations", typeof variations);
 
     // check if Product already exists
     const productsNameExits = await Products.findOne({
@@ -140,7 +142,7 @@ const createProduct = {
       productName,
       productsDescription,
       categoryName,
-      image:imagePaths,
+      image: imagePaths,
       regularPrice,
       salePrice,
       discount: discount || 0,
@@ -152,29 +154,29 @@ const createProduct = {
       best_selling: best_selling || "0",
       gender,
       quantity,
-      hasVariations
+      hasVariations,
     });
-    
 
     if (hasVariations && Array.isArray(variations) && variations.length > 0) {
-      const variationDocs = variations.map(variation => ({
+      const variationDocs = variations.map((variation) => ({
         productId: product._id,
         productSize: variation.productSize,
-        regularPrice: variation.regularPrice || 0, 
+        regularPrice: variation.regularPrice || 0,
         salePrice: variation.salePrice,
-        discount: variation.discount || 0
+        discount: variation.discount || 0,
       }));
 
-      console.log('variationDocs', variationDocs)
+      console.log("variationDocs", variationDocs);
       const savedVariations = await ProductVariations.insertMany(variationDocs);
-      product.variations = savedVariations.map(variation => variation._id);
+      product.variations = savedVariations.map((variation) => variation._id);
       await product.save();
     }
 
     const products = await product.save();
 
-
-    const newProduct  =  await Products.findById(products._id).populate('variations');
+    const newProduct = await Products.findById(products._id).populate(
+      "variations"
+    );
     return res.status(httpStatus.CREATED).send(newProduct);
   },
 };
@@ -186,7 +188,7 @@ const getAllProducts = {
       productName: Joi.string(),
       stock: Joi.string(),
       gender: Joi.string(),
-      salePrice:Joi.string()
+      salePrice: Joi.string(),
     }),
   },
   handler: async (req, res) => {
@@ -216,9 +218,8 @@ const getAllProducts = {
         filter.salePrice = { $gte: 0, $lte: maxPrice };
       }
     }
-   
 
-    const products = await Products.find(filter).populate('variations');
+    const products = await Products.find(filter).populate("variations");
 
     return res.status(httpStatus.OK).send(products);
   },
@@ -235,17 +236,19 @@ const getLatestProductsByCategory = {
       const filter = {};
 
       if (req.query?.categoryName) {
-        filter.categoryName = req.query.categoryName;  
+        filter.categoryName = req.query.categoryName;
       }
 
       const products = await Products.find(filter)
         .sort({ createdAt: -1 }) // Sort by createdAt (latest first)
-        
-        .populate('variations');
+
+        .populate("variations");
 
       return res.status(httpStatus.OK).send(products);
     } catch (error) {
-      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({ message: 'Error fetching products', error });
+      return res
+        .status(httpStatus.INTERNAL_SERVER_ERROR)
+        .send({ message: "Error fetching products", error });
     }
   },
 };
@@ -281,9 +284,8 @@ const getTrendingProducts = {
       //   { $limit: 4 }
       // ]);
 
-      const products = await Products.find()
-        .sort({ rating: -1 }) // Sort by highest rating
-        // .limit(4).populate('variations'); // Get only the top 4 products
+      const products = await Products.find().sort({ rating: -1 }); // Sort by highest rating
+      // .limit(4).populate('variations'); // Get only the top 4 products
 
       return res.status(httpStatus.OK).send(products);
     } catch (error) {
@@ -302,7 +304,8 @@ const getProductsByPrice = {
         ? parseFloat(req.query.salePrice)
         : 1999; // Default: ₹1,999
 
-      const products = await Products.find({ salePrice: { $lt: maxPrice } }).populate('variations') // Filter products by salePrice
+      const products = await Products.find({ salePrice: { $lt: maxPrice } })
+        .populate("variations") // Filter products by salePrice
         .sort({ rating: -1 }); // Sort by highest rating
 
       return res.status(httpStatus.OK).json(products);
@@ -323,7 +326,9 @@ const getBestSelling = {
   },
   handler: async (req, res) => {
     try {
-      const bestSellingProducts = await Products.find({ best_selling: "1" }).populate('variations');
+      const bestSellingProducts = await Products.find({
+        best_selling: "1",
+      }).populate("variations");
 
       return res.status(httpStatus.OK).send(bestSellingProducts);
     } catch (error) {
@@ -339,8 +344,8 @@ const getOnSale = {
   handler: async (req, res) => {
     try {
       const onSaleProducts = await Products.find({ discount: { $gt: 0 } }) // Get products with discount > 0
-        .sort({ discount: -1 }) // Sort by highest discount first
-        // .limit(4).populate('variations'); // Limit to 4 products
+        .sort({ discount: -1 }); // Sort by highest discount first
+      // .limit(4).populate('variations'); // Limit to 4 products
 
       return res.status(httpStatus.OK).json(onSaleProducts);
     } catch (error) {
@@ -420,14 +425,18 @@ const updateProducts = {
           variation.salePrice == null ||
           variation.regularPrice == null
         ) {
-          return res.status(400).json({ message: "Variation missing required fields" });
+          return res
+            .status(400)
+            .json({ message: "Variation missing required fields" });
         }
       }
 
       req.body.variations = variations;
 
       // Track variations
-      const existingVariationIds = product.variations.map((v) => v._id.toString());
+      const existingVariationIds = product.variations.map((v) =>
+        v._id.toString()
+      );
       const newVariationDocs = [];
 
       for (const variation of variations) {
@@ -445,13 +454,18 @@ const updateProducts = {
       }
 
       // Save new variations
-      const savedVariations = await ProductVariations.insertMany(newVariationDocs);
+      const savedVariations = await ProductVariations.insertMany(
+        newVariationDocs
+      );
       const newVariationIds = savedVariations.map((v) => v._id.toString());
       const existingVariationIdsToKeep = variations
         .map((v) => v._id)
         .filter((id) => id && existingVariationIds.includes(id));
 
-      const updatedVariationIds = [...existingVariationIdsToKeep, ...newVariationIds];
+      const updatedVariationIds = [
+        ...existingVariationIdsToKeep,
+        ...newVariationIds,
+      ];
 
       // Remove deleted variations
       const variationsToDelete = existingVariationIds.filter(
@@ -459,7 +473,9 @@ const updateProducts = {
       );
 
       if (variationsToDelete.length > 0) {
-        await ProductVariations.deleteMany({ _id: { $in: variationsToDelete } });
+        await ProductVariations.deleteMany({
+          _id: { $in: variationsToDelete },
+        });
       }
 
       product.variations = updatedVariationIds;
@@ -483,7 +499,7 @@ const updateProducts = {
       "quantity",
       "categoryName",
       "productSize",
-      "image"
+      "image",
     ];
 
     fieldsToUpdate.forEach((field) => {
@@ -498,8 +514,6 @@ const updateProducts = {
     return res.status(httpStatus.OK).send(updatedProduct);
   },
 };
-
-
 
 const deleteProduct = {
   handler: async (req, res) => {
@@ -521,7 +535,7 @@ const deleteProduct = {
 
     // delete Products
     await Products.deleteOne({ _id });
-    await ProductVariations.deleteMany({ productId: _id })
+    await ProductVariations.deleteMany({ productId: _id });
     return res
       .status(httpStatus.OK)
       .send({ message: "Products deleted successfully" });
@@ -545,7 +559,7 @@ const multiDeleteProducts = {
     // Fetch products to remove their images
     const products = await Products.find({ _id: { $in: ids } });
 
-    console.log('products', products)
+    console.log("products", products);
 
     if (!products || products.length === 0) {
       throw new ApiError(httpStatus.NOT_FOUND, "Products not found");
@@ -568,11 +582,11 @@ const multiDeleteProducts = {
     //   }
     // }
 
-    console.log('ids', ids)
+    console.log("ids", ids);
 
     // Delete products from DB
     await Products.deleteMany({ _id: { $in: ids } });
-    await ProductVariations.deleteMany({ productId: { $in: ids } })
+    await ProductVariations.deleteMany({ productId: { $in: ids } });
     return res
       .status(httpStatus.OK)
       .send({ message: "Products deleted successfully" });
@@ -589,7 +603,7 @@ const getSingleProduct = {
     const { productId } = req.params;
 
     // Check if product exists
-    const product = await Products.findById(productId).populate('variations');
+    const product = await Products.findById(productId).populate("variations");
 
     if (!product) {
       throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
@@ -608,7 +622,7 @@ const getProductById = {
   handler: async (req, res) => {
     try {
       const { id } = req.params;
-      const product = await Products.findById(id).populate('variations');
+      const product = await Products.findById(id).populate("variations");
 
       if (!product) {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
@@ -636,5 +650,5 @@ module.exports = {
   multiDeleteProducts,
   getProductsByPrice,
   getProductById,
-  getLatestProductsByCategory
+  getLatestProductsByCategory,
 };
