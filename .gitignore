@@ -5,8 +5,9 @@ node_modules
 yarn-error.log
 
 # Environment varibales
-.env*
-!.env*.example
+# Environment variables
+.env*          # Ignores all .env files
+!.env*.example # Except .env.example files
 
 # Code coverage
 coverage

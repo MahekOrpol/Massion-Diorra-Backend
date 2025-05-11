@@ -4,18 +4,18 @@ const adminRoute = require("./admin.route");
 const aboutUsRoute = require("./aboutUs.route");
 const notificationRoute = require("./notification.route");
 const registerRoute = require("./register.route");
-const productRoute=require('./products.route')
-const wishlistRoute=require('./wishlist.route')
-const categoryRoute=require('./category.route')
-const orderDetailsRoute=require('./orderDetails.route')
-const orderRoute=require('./order.route')
-const paymentRoute=require('./payment.route')
-const contactRoutes = require('./contactUs.route')
+const productRoute = require("./products.route");
+const wishlistRoute = require("./wishlist.route");
+const categoryRoute = require("./category.route");
+const orderDetailsRoute = require("./orderDetails.route");
+const orderRoute = require("./order.route");
+const paymentRoute = require("./payment.route");
+const contactRoutes = require("./contactUs.route");
 const router = express.Router();
-const priceFilterRoute=require('./priceFilter.route');
+const priceFilterRoute = require("./priceFilter.route");
 const customJewelsRoute = require("./customJewels.route");
+const bannerRoute = require("./banner.route");
 const defaultRoutes = [
- 
   {
     path: "/admin",
     route: adminRoute,
@@ -24,52 +24,56 @@ const defaultRoutes = [
     path: "/users",
     route: userRoute,
   },
- 
+
   {
     path: "/notification",
     route: notificationRoute,
   },
- 
+
   {
     path: "/register",
     route: registerRoute,
   },
   {
-    path: '/product',
+    path: "/product",
     route: productRoute,
   },
   {
-    path: '/category',
+    path: "/category",
     route: categoryRoute,
   },
   {
-    path: '/wishlist',
+    path: "/wishlist",
     route: wishlistRoute,
   },
   {
-    path: '/contact-us',
+    path: "/contact-us",
     route: contactRoutes,
   },
   {
-    path: '/order-details',
+    path: "/order-details",
     route: orderDetailsRoute,
   },
   {
-    path: '/order',
+    path: "/order",
     route: orderRoute,
   },
   {
-    path: '/payment',
+    path: "/payment",
     route: paymentRoute,
   },
   {
-    path:'/price-filter',
+    path: "/price-filter",
     route: priceFilterRoute,
   },
   {
-    path:'/custom-jewels',
+    path: "/custom-jewels",
     route: customJewelsRoute,
-  }
+  },
+  {
+    path: "/banners",
+    route: bannerRoute,
+  },
 ];
 
 defaultRoutes.forEach((route) => {
