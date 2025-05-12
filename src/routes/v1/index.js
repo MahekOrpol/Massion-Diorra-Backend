@@ -14,6 +14,9 @@ const contactRoutes = require('./contactUs.route')
 const router = express.Router();
 const priceFilterRoute=require('./priceFilter.route');
 const customJewelsRoute = require("./customJewels.route");
+const giftingGuideRoute = require("./giftingGuide.route");
+const newArrivalsRoute = require("./newArrivals.route");
+
 const defaultRoutes = [
  
   {
@@ -69,7 +72,15 @@ const defaultRoutes = [
   {
     path:'/custom-jewels',
     route: customJewelsRoute,
-  }
+  },
+  {
+    path:'/gifting-guide',
+    route: giftingGuideRoute,
+  },
+  {
+    path:'/new-arrivals',
+    route: newArrivalsRoute,
+  },
 ];
 
 defaultRoutes.forEach((route) => {

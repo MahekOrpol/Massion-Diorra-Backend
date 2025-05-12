@@ -12,6 +12,11 @@ const categoriesSchema = mongoose.Schema(
       type: String, // Storing image URL or file path
       trim: true,
     },
+    subcategories: [
+      {
+        subcategoryName: { type: String, required: true, trim: true },
+      },
+    ],
   },
   {
     timestamps: true,
