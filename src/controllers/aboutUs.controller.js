@@ -1,23 +1,38 @@
 const httpStatus = require('http-status');
 const Joi = require('joi');
 const { AboutUs } = require('../models');
-const catchAsync = require('../utils/catchAsync');
-const { log } = require('../config/logger');
-const { Console } = require('winston/lib/winston/transports');
+const { saveFile } = require('../utils/helper');
 
 const createAboutUs = {
     validation: {
         body: Joi.object().keys({
-            middlename: Joi.string().required(),
-            gender: Joi.string().required(),
-            email: Joi.string().required(),
-            category: Joi.string().required(),
-            birthdate: Joi.string().required(),
+            tagline: Joi.string().required(),
+            aboutDescription: Joi.string().required(),
+            goalDescription: Joi.string().required(),
+            aboutImg: Joi.string().optional(),
+            goalImg: Joi.string().optional(),
+
         }),
     },
     handler: async (req, res) => {
+        const { tagline, aboutDescription, goalDescription } = req.body;
 
-        const aboutUs = await new AboutUs(req.body).save();
+        let aboutImg = req.files.aboutImg
+            ? await saveFile(req.files.aboutImg)
+            : null;
+
+        let goalImg = req.files.goalImg
+            ? await saveFile(req.files.goalImg)
+            : null;
+
+        const aboutUs = new AboutUs({
+            tagline,
+            aboutDescription,
+            goalDescription,
+            aboutImg: aboutImg?.upload_path,
+            goalImg: goalImg?.upload_path,
+        });
+        await aboutUs.save();
         return res.status(httpStatus.CREATED).send(aboutUs);
     }
 };
@@ -25,11 +40,11 @@ const createAboutUs = {
 const updateAboutUs = {
     validation: {
         body: Joi.object().keys({
-            middlename: Joi.string(),
-            gender: Joi.string(),
-            email: Joi.string(),
-            category: Joi.string(),
-            birthdate: Joi.string(),
+            tagline: Joi.string(),
+            aboutDescription: Joi.string(),
+            goalDescription: Joi.string(),
+            aboutImg: Joi.string(),
+            goalImg: Joi.string(),
         }),
     },
     handler: async (req, res) => {
@@ -47,22 +62,31 @@ const deleteAboutUs = {
 
 const getAboutus = {
     handler: async (req, res) => {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skipValue = limit * page - limit;
-        
-        // console.log("limit",typeof req.query.skip);
-
-        const aboutUs = await AboutUs.find({
-            ...(req.query?.middlename && { middlename: req.query?.middlename })
-        }).limit(limit).skip(skipValue);
+      
+        const aboutUs = await AboutUs.find();
         return res.status(httpStatus.OK).send(aboutUs);
     }
 };
+
+const getAboutUsById = {
+    handler: async (req, res) => {
+        try {
+            const aboutUs = await AboutUs.findById(req.params.id);
+            if (!aboutUs) {
+                return res.status(httpStatus.NOT_FOUND).send({ message: 'Entry not found' });
+            }
+            return res.status(httpStatus.OK).send(aboutUs);
+        } catch (error) {
+            return res.status(httpStatus.BAD_REQUEST).send({ message: 'Invalid ID', error: error.message });
+        }
+    }
+};
+
 
 module.exports = {
     createAboutUs,
     updateAboutUs,
     deleteAboutUs,
-    getAboutus
+    getAboutus,
+    getAboutUsById
 };

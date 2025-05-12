@@ -14,4 +14,5 @@ module.exports.priceFilterController=require('./priceFilter.controller');
 module.exports.customJewelsController=require('./customJewels.controller');
 module.exports.giftingGuideController=require('./giftingGuide.controller');
 module.exports.newArrivalsController=require('./newArrivals.controller');
+module.exports.blogsController=require('./blogs.controller');
 

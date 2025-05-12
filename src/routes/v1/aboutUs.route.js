@@ -9,6 +9,7 @@ router.post('/create', validate(aboutUsController.createAboutUs.validation), cat
 router.put('/update/:id', validate(aboutUsController.updateAboutUs.validation),catchAsync(aboutUsController.updateAboutUs.handler));
 router.delete('/delete/:id',catchAsync(aboutUsController.deleteAboutUs.handler));
 router.get('/get',catchAsync(aboutUsController.getAboutus.handler));
+router.get('/get/:id',catchAsync(aboutUsController.getAboutUsById.handler));
 
 module.exports = router;
 

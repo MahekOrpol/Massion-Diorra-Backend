@@ -4,27 +4,29 @@ const { validator}=require('validator');
 
 const aboutUsSchema = mongoose.Schema(
     {
-        middlename: {
+        tagline: {
             type: String,
-            require: true,
+            required: true,
             trim: true,
         },
-        gender: {
-            type: String,
-        },
-        email: {
-            type: String,
-            require: true,
-            unique: true,
-            trim: true,
-            lowercase: true,
-        },
-        category: {
-            type: String,
-        },
-        birthdate:{
-            type:String,
-        }
+        aboutDescription:{
+           type: String,
+           required: true,
+           trim: true,
+       },
+        goalDescription:{
+           type: String,
+           required: true,
+           trim: true,
+       },
+       aboutImg:{
+        type: String, // Storing image URL or file path
+        trim: true,
+       },
+       goalImg:{
+        type: String, // Storing image URL or file path
+        trim: true,
+       },
     },
     {
         timestamps: true,

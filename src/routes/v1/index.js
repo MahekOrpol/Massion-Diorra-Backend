@@ -16,6 +16,8 @@ const priceFilterRoute=require('./priceFilter.route');
 const customJewelsRoute = require("./customJewels.route");
 const giftingGuideRoute = require("./giftingGuide.route");
 const newArrivalsRoute = require("./newArrivals.route");
+const blogsRoute = require("./blogs.route");
+const authRoute= require("./auth.route");
 
 const defaultRoutes = [
  
@@ -26,6 +28,10 @@ const defaultRoutes = [
   {
     path: "/users",
     route: userRoute,
+  },
+  {
+    path: "/auth",
+    route: authRoute,
   },
  
   {
@@ -80,6 +86,14 @@ const defaultRoutes = [
   {
     path:'/new-arrivals',
     route: newArrivalsRoute,
+  },
+  {
+    path:'/about-us',
+    route: aboutUsRoute,
+  },
+  {
+    path:'/blog',
+    route: blogsRoute,
   },
 ];
 
