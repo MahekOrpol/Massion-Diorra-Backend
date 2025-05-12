@@ -33,11 +33,6 @@ const productsSchema = mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
-
-    image: {
-      type: [String],
-      default: [],
-    },
     categoryName: {
       type: String,
       required: true,

@@ -26,7 +26,6 @@ const createProduct = {
         stock: Joi.string().required(),
         sku: Joi.string().required(),
         best_selling: Joi.string(),
-        image: Joi.array().items(Joi.string()).optional(),
         gender: Joi.string(),
         hasVariations: Joi.boolean().default(false),
         variations: Joi.alternatives()
@@ -37,6 +36,7 @@ const createProduct = {
                   Joi.object({
                     metal: Joi.string().required(),
                     quantity: Joi.string().required(),
+                    images: Joi.array().items(Joi.string()).required(),
                     diamondShape: Joi.object({
                       name: Joi.string().required(),
                       image: Joi.string().required()
@@ -82,7 +82,6 @@ const createProduct = {
       stock,
       sku,
       best_selling,
-      image,
       gender,
       hasVariations,
       variations
@@ -110,19 +109,6 @@ const createProduct = {
       throw new ApiError(httpStatus.BAD_REQUEST, "SKU already exists");
     }
 
-    let imagePaths = [];
-    if (req.files && req.files.image) {
-      const filesArray = Array.isArray(req.files.image)
-        ? req.files.image
-        : [req.files.image];
-
-      for (const file of filesArray) {
-        const { upload_path } = await saveFile(file);
-        imagePaths.push(upload_path);
-      }
-    }
-    req.body.image = imagePaths;
-
     best_selling = best_selling === "1" ? "1" : "0";
 
     discount = parseFloat(discount);
@@ -137,7 +123,6 @@ const createProduct = {
       productName,
       productsDescription,
       categoryName,
-      image: imagePaths,
       regularPrice,
       salePrice,
       discount: discount || 0,
@@ -151,6 +136,25 @@ const createProduct = {
     });
 
     if (hasVariations && Array.isArray(variations) && variations.length > 0) {
+      // Process images for each metal variation
+      for (const variation of variations) {
+        for (const metalVariation of variation.metalVariations) {
+          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); // Convert spaces to underscores
+          if (req.files && req.files[`images_${metalKey}`]) {
+            const filesArray = Array.isArray(req.files[`images_${metalKey}`])
+              ? req.files[`images_${metalKey}`]
+              : [req.files[`images_${metalKey}`]];
+
+            const imagePaths = [];
+            for (const file of filesArray) {
+              const { upload_path } = await saveFile(file);
+              imagePaths.push(upload_path);
+            }
+            metalVariation.images = imagePaths;
+          }
+        }
+      }
+
       const variationDocs = variations.map(variation => ({
         productId: product._id,
         metalVariations: variation.metalVariations
@@ -486,8 +490,6 @@ const updateProducts = {
     return res.status(httpStatus.OK).send(updatedProduct);
   },
 };
-
-
 
 const deleteProduct = {
   handler: async (req, res) => {

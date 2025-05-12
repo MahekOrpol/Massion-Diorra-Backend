@@ -21,6 +21,7 @@ const shankSchema = new mongoose.Schema({
 const metalVariationSchema = new mongoose.Schema({
   metal: { type: String, required: true },
   quantity: { type: String, required: true },
+  images: { type: [String], default: [] },
   diamondShape: diamondShapeSchema,
   shank: shankSchema,
   ringSizes: [ringSizeSchema],
