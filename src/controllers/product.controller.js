@@ -139,7 +139,7 @@ const createProduct = {
       // Process images for each metal variation
       for (const variation of variations) {
         for (const metalVariation of variation.metalVariations) {
-          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); // Convert spaces to underscores
+          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); 
           if (req.files && req.files[`images_${metalKey}`]) {
             const filesArray = Array.isArray(req.files[`images_${metalKey}`])
               ? req.files[`images_${metalKey}`]
@@ -173,46 +173,144 @@ const createProduct = {
 
 const getAllProducts = {
   validation: {
-    body: Joi.object().keys({
+    query: Joi.object().keys({
       categoryName: Joi.string(),
       productName: Joi.string(),
       stock: Joi.string(),
       gender: Joi.string(),
-      salePrice:Joi.string()
+      salePrice: Joi.string(),
+      metal: Joi.string(),
+      best_selling: Joi.string(),
+      hasVariations: Joi.boolean()
     }),
   },
   handler: async (req, res) => {
-    // const products = await Products.find({
-    //   ...(req.query?.productName && { productName: req.query?.productName }),
-    // });
-    // return res.status(httpStatus.OK).send(products);
-    const filter = {};
+    try {
+      const filter = {};
 
-    if (req.query?.categoryName) {
-      filter.categoryName = req.query.categoryName; // Filter by category name
-    }
-
-    if (req.query?.productName) {
-      filter.productName = req.query.productName; // Filter by product namenpm
-    }
-
-    if (req.query?.stock) {
-      filter.stock = req.query.stock; // Filter by product name
-    }
-    if (req.query?.gender) {
-      filter.gender = req.query.gender; // Filter by product name
-    }
-    if (req.query?.salePrice) {
-      const maxPrice = parseFloat(req.query.salePrice);
-      if (!isNaN(maxPrice)) {
-        filter.salePrice = { $gte: 0, $lte: maxPrice };
+      // Basic filters
+      if (req.query?.categoryName) {
+        filter.categoryName = req.query.categoryName;
       }
+
+      if (req.query?.productName) {
+        filter.productName = { $regex: req.query.productName, $options: 'i' };
+      }
+
+      if (req.query?.stock) {
+        filter.stock = req.query.stock;
+      }
+
+      if (req.query?.gender) {
+        filter.gender = req.query.gender;
+      }
+
+      if (req.query?.best_selling) {
+        filter.best_selling = req.query.best_selling;
+      }
+
+      if (req.query?.hasVariations !== undefined) {
+        filter.hasVariations = req.query.hasVariations === 'true';
+      }
+
+      // Price filter
+      if (req.query?.salePrice) {
+        const maxPrice = parseFloat(req.query.salePrice);
+        if (!isNaN(maxPrice)) {
+          filter.salePrice = { $gte: 0, $lte: maxPrice };
+        }
+      }
+
+      // Get products with populated variations
+      const products = await Products.find(filter)
+        .populate({
+          path: 'variations',
+          populate: {
+            path: 'metalVariations',
+            match: req.query?.metal ? { metal: { $regex: req.query.metal, $options: 'i' } } : {}
+          }
+        })
+        .lean();
+
+      // Filter out products with no matching metal variations if metal filter is applied
+      const filteredProducts = req.query?.metal
+        ? products.filter(product => 
+            product.variations.some(variation => 
+              variation.metalVariations && variation.metalVariations.length > 0
+            )
+          )
+        : products;
+
+      // Add additional information to each product
+      const enhancedProducts = filteredProducts.map(product => {
+        // Get all unique metals from variations
+        const allMetals = product.variations.reduce((metals, variation) => {
+          if (variation.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              if (!metals.includes(mv.metal)) {
+                metals.push(mv.metal);
+              }
+            });
+          }
+          return metals;
+        }, []);
+
+        // Get all ring sizes from variations
+        const allRingSizes = product.variations.reduce((sizes, variation) => {
+          if (variation.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              mv.ringSizes.forEach(rs => {
+                if (!sizes.includes(rs.productSize)) {
+                  sizes.push(rs.productSize);
+                }
+              });
+            });
+          }
+          return sizes;
+        }, []);
+
+        return {
+          ...product,
+          availableMetals: allMetals,
+          availableRingSizes: allRingSizes,
+          // Get the lowest and highest prices from all variations
+          priceRange: {
+            min: Math.min(
+              ...product.variations.reduce((prices, variation) => {
+                if (variation.metalVariations) {
+                  variation.metalVariations.forEach(mv => {
+                    mv.ringSizes.forEach(rs => {
+                      prices.push(parseFloat(rs.salePrice));
+                    });
+                  });
+                }
+                return prices;
+              }, [])
+            ),
+            max: Math.max(
+              ...product.variations.reduce((prices, variation) => {
+                if (variation.metalVariations) {
+                  variation.metalVariations.forEach(mv => {
+                    mv.ringSizes.forEach(rs => {
+                      prices.push(parseFloat(rs.salePrice));
+                    });
+                  });
+                }
+                return prices;
+              }, [])
+            )
+          }
+        };
+      });
+
+      return res.status(httpStatus.OK).send(enhancedProducts);
+    } catch (error) {
+      console.error('Error in getAllProducts:', error);
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
+        message: "Error fetching products",
+        error: error.message
+      });
     }
-   
-
-    const products = await Products.find(filter).populate('variations');
-
-    return res.status(httpStatus.OK).send(products);
   },
 };
 
@@ -362,31 +460,10 @@ const updateProducts = {
       throw new ApiError(httpStatus.BAD_REQUEST, "Product name already exists");
     }
 
-    // Process image uploads
-    let imagePaths = product.image || [];
-    if (req.files && req.files.image) {
-      const filesArray = Array.isArray(req.files.image)
-        ? req.files.image
-        : [req.files.image];
-
-      for (const file of filesArray) {
-        const { upload_path } = await saveFile(file);
-        imagePaths.push(upload_path);
-      }
-    }
-    req.body.image = imagePaths;
-
     // Type conversions
     req.body.discount = parseFloat(req.body.discount) || 0;
     req.body.salePrice = parseFloat(req.body.salePrice);
     req.body.regularPrice = parseFloat(req.body.regularPrice);
-
-    // Convert productSize string to array
-    if (typeof req.body.productSize === "string") {
-      req.body.productSize = req.body.productSize
-        .split(",")
-        .map((size) => size.trim());
-    }
 
     // Handle variations
     let { hasVariations, variations } = req.body;
@@ -405,18 +482,24 @@ const updateProducts = {
         return res.status(400).json({ message: "Variations must be an array" });
       }
 
-      // Validate variation fields
+      // Process images for each metal variation
       for (const variation of variations) {
-        if (
-          !variation.productSize ||
-          variation.salePrice == null ||
-          variation.regularPrice == null
-        ) {
-          return res.status(400).json({ message: "Variation missing required fields" });
+        for (const metalVariation of variation.metalVariations) {
+          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); // Convert spaces to underscores
+          if (req.files && req.files[`images_${metalKey}`]) {
+            const filesArray = Array.isArray(req.files[`images_${metalKey}`])
+              ? req.files[`images_${metalKey}`]
+              : [req.files[`images_${metalKey}`]];
+
+            const imagePaths = [];
+            for (const file of filesArray) {
+              const { upload_path } = await saveFile(file);
+              imagePaths.push(upload_path);
+            }
+            metalVariation.images = imagePaths;
+          }
         }
       }
-
-      req.body.variations = variations;
 
       // Track variations
       const existingVariationIds = product.variations.map((v) => v._id.toString());
@@ -424,14 +507,15 @@ const updateProducts = {
 
       for (const variation of variations) {
         if (variation._id && existingVariationIds.includes(variation._id)) {
-          await ProductVariations.findByIdAndUpdate(variation._id, variation);
+          // Update existing variation
+          await ProductVariations.findByIdAndUpdate(variation._id, {
+            metalVariations: variation.metalVariations
+          });
         } else {
+          // Create new variation
           newVariationDocs.push({
             productId: product._id,
-            productSize: variation.productSize,
-            regularPrice: parseFloat(variation.regularPrice) || 0,
-            salePrice: parseFloat(variation.salePrice) || 0,
-            discount: parseFloat(variation.discount) || 0,
+            metalVariations: variation.metalVariations
           });
         }
       }
@@ -472,10 +556,7 @@ const updateProducts = {
       "discount",
       "best_selling",
       "sku",
-      "quantity",
-      "categoryName",
-      "productSize",
-      "image"
+      "categoryName"
     ];
 
     fieldsToUpdate.forEach((field) => {
@@ -592,23 +673,137 @@ const getSingleProduct = {
 const getProductById = {
   validation: {
     params: Joi.object().keys({
-      id: Joi.string().required(), // Validate ID from params
+      id: Joi.string().required(),
     }),
   },
   handler: async (req, res) => {
     try {
       const { id } = req.params;
-      const product = await Products.findById(id).populate('variations');
+      const product = await Products.findById(id)
+        .populate({
+          path: 'variations',
+          populate: {
+            path: 'metalVariations'
+          }
+        })
+        .lean();
 
       if (!product) {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
 
-      return res.status(httpStatus.OK).send(product);
+      // Get all unique metals from variations
+      const allMetals = product.variations.reduce((metals, variation) => {
+        if (variation.metalVariations) {
+          variation.metalVariations.forEach(mv => {
+            if (!metals.includes(mv.metal)) {
+              metals.push(mv.metal);
+            }
+          });
+        }
+        return metals;
+      }, []);
+
+      // Get all ring sizes from variations
+      const allRingSizes = product.variations.reduce((sizes, variation) => {
+        if (variation.metalVariations) {
+          variation.metalVariations.forEach(mv => {
+            mv.ringSizes.forEach(rs => {
+              if (!sizes.includes(rs.productSize)) {
+                sizes.push(rs.productSize);
+              }
+            });
+          });
+        }
+        return sizes;
+      }, []);
+
+      // Get price range
+      const priceRange = {
+        min: Math.min(
+          ...product.variations.reduce((prices, variation) => {
+            if (variation.metalVariations) {
+              variation.metalVariations.forEach(mv => {
+                mv.ringSizes.forEach(rs => {
+                  prices.push(parseFloat(rs.salePrice));
+                });
+              });
+            }
+            return prices;
+          }, [])
+        ),
+        max: Math.max(
+          ...product.variations.reduce((prices, variation) => {
+            if (variation.metalVariations) {
+              variation.metalVariations.forEach(mv => {
+                mv.ringSizes.forEach(rs => {
+                  prices.push(parseFloat(rs.salePrice));
+                });
+              });
+            }
+            return prices;
+          }, [])
+        )
+      };
+
+      // Get all diamond shapes
+      const allDiamondShapes = product.variations.reduce((shapes, variation) => {
+        if (variation.metalVariations) {
+          variation.metalVariations.forEach(mv => {
+            if (!shapes.some(s => s.name === mv.diamondShape.name)) {
+              shapes.push(mv.diamondShape);
+            }
+          });
+        }
+        return shapes;
+      }, []);
+
+      // Get all shank types
+      const allShankTypes = product.variations.reduce((shanks, variation) => {
+        if (variation.metalVariations) {
+          variation.metalVariations.forEach(mv => {
+            if (!shanks.some(s => s.name === mv.shank.name)) {
+              shanks.push(mv.shank);
+            }
+          });
+        }
+        return shanks;
+      }, []);
+
+      // Enhanced product response
+      const enhancedProduct = {
+        ...product,
+        availableMetals: allMetals,
+        availableRingSizes: allRingSizes,
+        availableDiamondShapes: allDiamondShapes,
+        availableShankTypes: allShankTypes,
+        priceRange,
+        // Group variations by metal for easier access
+        metalVariations: product.variations.reduce((acc, variation) => {
+          if (variation.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              if (!acc[mv.metal]) {
+                acc[mv.metal] = {
+                  metal: mv.metal,
+                  quantity: mv.quantity,
+                  images: mv.images,
+                  diamondShape: mv.diamondShape,
+                  shank: mv.shank,
+                  ringSizes: mv.ringSizes
+                };
+              }
+            });
+          }
+          return acc;
+        }, {})
+      };
+
+      return res.status(httpStatus.OK).send(enhancedProduct);
     } catch (error) {
+      console.error('Error in getProductById:', error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error fetching product",
-        error: error.message,
+        error: error.message
       });
     }
   },
