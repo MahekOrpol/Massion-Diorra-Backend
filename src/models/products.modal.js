@@ -9,11 +9,6 @@ const productsSchema = mongoose.Schema(
       required: true,
       trim: true,
     },
-    quantity: {
-      type: String,
-      required: true,
-      trim: true,
-    },
 
     best_selling: {
       type: String,
@@ -21,14 +16,6 @@ const productsSchema = mongoose.Schema(
       default: "0",
     },
 
-    review: {
-      type: String,
-      trim: true,
-    },
-    rating: {
-      type: String,
-      trim: true,
-    },
     sku: {
       type: String,
       required: true,
@@ -63,21 +50,12 @@ const productsSchema = mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
-    // productSize: {
-    //   type: String,
-    // },
-    productSize: {
-      type: [String], // Changed from String to an array of strings
-      default: [""], // Default value as an empty array
-    },
     gender: {
       type: String,
       default: "",
     },
     hasVariations: { type: Boolean, default: false },
-    variations: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "ProductVariation" },
-    ],
+    variations: [{ type: mongoose.Schema.Types.ObjectId, ref: "ProductVariation" }],
   },
   {
     timestamps: true,

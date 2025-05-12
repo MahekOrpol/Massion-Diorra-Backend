@@ -18,18 +18,12 @@ const createProduct = {
     body: Joi.object()
       .keys({
         categoryName: Joi.string().required(),
-        quantity: Joi.string().required(),
         productName: Joi.string().required(),
         productsDescription: Joi.string().required(),
         regularPrice: Joi.number().precision(2).required(),
         salePrice: Joi.number().precision(2).required(),
         discount: Joi.number().precision(2),
         stock: Joi.string().required(),
-        productSize: Joi.alternatives()
-          .try(Joi.array().items(Joi.string()), Joi.string())
-          .required(), // Accept array or string
-        review: Joi.string(),
-        rating: Joi.string(),
         sku: Joi.string().required(),
         best_selling: Joi.string(),
         image: Joi.array().items(Joi.string()).optional(),
@@ -39,10 +33,25 @@ const createProduct = {
           .try(
             Joi.array().items(
               Joi.object({
-                productSize: Joi.string().required(),
-                regularPrice: Joi.number().precision(2).required(),
-                salePrice: Joi.number().precision(2).required(),
-                discount: Joi.number().precision(2).optional(),
+                metalType: Joi.string().required(),
+                metalName: Joi.string().required(),
+                quantity: Joi.string().required(),
+                diamondShape: Joi.object({
+                  name: Joi.string().required(),
+                  image: Joi.string().required()
+                }).required(),
+                shank: Joi.object({
+                  name: Joi.string().required(),
+                  image: Joi.string().required()
+                }).required(),
+                ringSizes: Joi.array().items(
+                  Joi.object({
+                    productSize: Joi.string().required(),
+                    regularPrice: Joi.number().precision(2).required(),
+                    salePrice: Joi.number().precision(2).required(),
+                    quantity: Joi.number().required()
+                  })
+                ).required()
               })
             ),
             Joi.string() // Allow JSON string
@@ -62,16 +71,12 @@ const createProduct = {
     console.log("req.body :>> ", req.body);
     let {
       categoryName,
-      quantity,
       productName,
       productsDescription,
       regularPrice,
       salePrice,
       discount,
       stock,
-      productSize,
-      review,
-      rating,
       sku,
       best_selling,
       image,
@@ -80,17 +85,13 @@ const createProduct = {
       variations
     } = req.body;
 
-
     hasVariations = String(hasVariations).trim().toLowerCase() === "true";
-
-    console.log('String(hasVariations).trim().toLowerCase() === true',   String(hasVariations).trim().toLowerCase() === "true")
 
     if (hasVariations && typeof variations === "string") { 
       variations = JSON.parse(variations);
     } else {
       variations = [];
     }
-    console.log('typeof variations', typeof variations)
 
     // check if Product already exists
     const productsNameExits = await Products.findOne({
@@ -108,7 +109,6 @@ const createProduct = {
 
     let imagePaths = [];
     if (req.files && req.files.image) {
-      // If single file, wrap in array
       const filesArray = Array.isArray(req.files.image)
         ? req.files.image
         : [req.files.image];
@@ -126,12 +126,6 @@ const createProduct = {
     salePrice = parseFloat(salePrice);
     regularPrice = parseFloat(regularPrice);
 
-    if (typeof req.body.productSize === "string") {
-      req.body.productSize = req.body.productSize
-        .split(",")
-        .map((size) => size.trim()); // Convert comma-separated string to array
-    }
-
     if (isNaN(req.body.discount)) {
       req.body.discount = 0;
     }
@@ -140,41 +134,37 @@ const createProduct = {
       productName,
       productsDescription,
       categoryName,
-      image:imagePaths,
+      image: imagePaths,
       regularPrice,
       salePrice,
       discount: discount || 0,
       stock,
-      productSize,
-      review: review || "",
-      rating: rating || "0",
+      review: "",
+      rating: "0",
       sku,
       best_selling: best_selling || "0",
       gender,
-      quantity,
       hasVariations
     });
-    
 
     if (hasVariations && Array.isArray(variations) && variations.length > 0) {
       const variationDocs = variations.map(variation => ({
         productId: product._id,
-        productSize: variation.productSize,
-        regularPrice: variation.regularPrice || 0, 
-        salePrice: variation.salePrice,
-        discount: variation.discount || 0
+        metalType: variation.metalType,
+        metalName: variation.metalName,
+        quantity: variation.quantity,
+        diamondShape: variation.diamondShape,
+        shank: variation.shank,
+        ringSizes: variation.ringSizes
       }));
 
-      console.log('variationDocs', variationDocs)
       const savedVariations = await ProductVariations.insertMany(variationDocs);
       product.variations = savedVariations.map(variation => variation._id);
       await product.save();
     }
 
     const products = await product.save();
-
-
-    const newProduct  =  await Products.findById(products._id).populate('variations');
+    const newProduct = await Products.findById(products._id).populate('variations');
     return res.status(httpStatus.CREATED).send(newProduct);
   },
 };
