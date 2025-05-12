@@ -33,23 +33,26 @@ const createProduct = {
           .try(
             Joi.array().items(
               Joi.object({
-                metalType: Joi.string().required(),
-                metalName: Joi.string().required(),
-                quantity: Joi.string().required(),
-                diamondShape: Joi.object({
-                  name: Joi.string().required(),
-                  image: Joi.string().required()
-                }).required(),
-                shank: Joi.object({
-                  name: Joi.string().required(),
-                  image: Joi.string().required()
-                }).required(),
-                ringSizes: Joi.array().items(
+                metalVariations: Joi.array().items(
                   Joi.object({
-                    productSize: Joi.string().required(),
-                    regularPrice: Joi.number().precision(2).required(),
-                    salePrice: Joi.number().precision(2).required(),
-                    quantity: Joi.number().required()
+                    metal: Joi.string().required(),
+                    quantity: Joi.string().required(),
+                    diamondShape: Joi.object({
+                      name: Joi.string().required(),
+                      image: Joi.string().required()
+                    }).required(),
+                    shank: Joi.object({
+                      name: Joi.string().required(),
+                      image: Joi.string().required()
+                    }).required(),
+                    ringSizes: Joi.array().items(
+                      Joi.object({
+                        productSize: Joi.string().required(),
+                        regularPrice: Joi.number().precision(2).required(),
+                        salePrice: Joi.number().precision(2).required(),
+                        quantity: Joi.number().required()
+                      })
+                    ).required()
                   })
                 ).required()
               })
@@ -150,12 +153,7 @@ const createProduct = {
     if (hasVariations && Array.isArray(variations) && variations.length > 0) {
       const variationDocs = variations.map(variation => ({
         productId: product._id,
-        metalType: variation.metalType,
-        metalName: variation.metalName,
-        quantity: variation.quantity,
-        diamondShape: variation.diamondShape,
-        shank: variation.shank,
-        ringSizes: variation.ringSizes
+        metalVariations: variation.metalVariations
       }));
 
       const savedVariations = await ProductVariations.insertMany(variationDocs);

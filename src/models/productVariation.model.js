@@ -18,14 +18,18 @@ const shankSchema = new mongoose.Schema({
   image: { type: String, required: true },
 });
 
+const metalVariationSchema = new mongoose.Schema({
+  metal: { type: String, required: true },
+  quantity: { type: String, required: true },
+  diamondShape: diamondShapeSchema,
+  shank: shankSchema,
+  ringSizes: [ringSizeSchema],
+});
+
 const productVariationSchema = new mongoose.Schema(
   {
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Products", required: true },
-    metal: { type: String, required: true },
-    quantity: { type: String, required: true },
-    diamondShape: diamondShapeSchema,
-    shank: shankSchema,
-    ringSizes: [ringSizeSchema],
+    metalVariations: [metalVariationSchema],
   },
   { timestamps: true }
 );
