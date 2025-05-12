@@ -1,13 +1,20 @@
 const express = require("express");
-const { handleWishlist, getAllWishlists, createWishlist, deleteeWishlist, getWishlist } = require("../../controllers/wishlist.controller");
-
 const router = express.Router();
+const wishlistController = require("../../controllers/wishlist.controller");
+const validate = require("../../middlewares/validate");
+const wishlistValidation = require("../../validations/wishlist.validation");
 
-router.route("/create")
-  .post(createWishlist)  // Add to wishlist
-  
-  router.route("/delete/:id").delete(deleteeWishlist) // Remove from wishlist
-router.get("/:userId", getWishlist); // Get wishlist
-router.get("/admin/wishlists", getAllWishlists);
+router
+  .route("/")
+  .post(validate(wishlistValidation.createWishlist), wishlistController.createWishlist)
+  .get(wishlistController.getAllWishlists);
+
+router
+  .route("/:userId")
+  .get(validate(wishlistValidation.getWishlist), wishlistController.getWishlist);
+
+router
+  .route("/:id")
+  .delete(validate(wishlistValidation.deleteWishlist), wishlistController.deleteeWishlist);
 
 module.exports = router;

@@ -18,6 +18,26 @@ const wishlistSchema = mongoose.Schema(
       ref: "Products", // Refers to Products schema
       required: true,
     },
+    selectedMetal: {
+      type: String,
+      required: true,
+    },
+    selectedSize: {
+      type: String,
+      required: true,
+    },
+    selectedDiamondShape: {
+      name: String,
+      image: String
+    },
+    selectedShank: {
+      name: String,
+      image: String
+    },
+    price: {
+      type: mongoose.Schema.Types.Decimal128,
+      required: true,
+    }
   },
   {
     timestamps: true,

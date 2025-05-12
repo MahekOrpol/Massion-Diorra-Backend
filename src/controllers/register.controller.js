@@ -71,77 +71,117 @@ const register = {
   },
 };
 
-// const login = {
-//   validation: {
-//     body: Joi.object().keys({
-//       email: Joi.string().required().email(),
-//       password: Joi.string().required(),
-//     }),
-//   },
-//   handler: async (req, res) => {
-//     const { email, password } = req.body;
-
-//     const user = await Register.findOne({ email });
-//     console.log(user); 
-
-//     const isMatch = await user.isPasswordMatch(password);
-// console.log("Password match:", isMatch); // This should be true
-
-
-//     // if (!user || !(await user.isPasswordMatch(password))) {
-//     //   throw new ApiError(
-//     //     httpStatus.UNAUTHORIZED,
-//     //     "Incorrect email or password"
-//     //   );
-//     // }
-
-//     const token = await tokenService.generateAuthTokens(user);
-//     return res.status(httpStatus.OK).send({ token, user });
-//   },
-// };
-
 const login = {
   validation: {
     body: Joi.object().keys({
-      email: Joi.string().required().email().messages({
-        "string.email": "Please enter a valid email address",
-        "any.required": "Email is required",
+      loginType: Joi.string().valid('email', 'phone', 'name').required().messages({
+        'any.only': 'Login type must be either email, phone, or name',
+        'any.required': 'Login type is required'
+      }),
+      email: Joi.string().email().when('loginType', {
+        is: 'email',
+        then: Joi.required(),
+        otherwise: Joi.optional()
+      }).messages({
+        'string.email': 'Please enter a valid email address',
+        'any.required': 'Email is required for email login'
+      }),
+      phone: Joi.string().when('loginType', {
+        is: 'phone',
+        then: Joi.required(),
+        otherwise: Joi.optional()
+      }).messages({
+        'any.required': 'Phone number is required for phone login'
+      }),
+      name: Joi.string().when('loginType', {
+        is: 'name',
+        then: Joi.required(),
+        otherwise: Joi.optional()
+      }).messages({
+        'any.required': 'Name is required for name login'
       }),
       password: Joi.string().required().min(8).messages({
-        "string.min": "Password must be at least 8 characters long",
-        "any.required": "Password is required",
-      }),
-    }),
+        'string.min': 'Password must be at least 8 characters long',
+        'any.required': 'Password is required'
+      })
+    }).custom((obj, helpers) => {
+      // Additional validation to ensure at least one identifier is provided
+      const { loginType, email, phone, name } = obj;
+      if (loginType === 'email' && !email) {
+        return helpers.error('any.invalid', { message: 'Email is required for email login' });
+      }
+      if (loginType === 'phone' && !phone) {
+        return helpers.error('any.invalid', { message: 'Phone is required for phone login' });
+      }
+      if (loginType === 'name' && !name) {
+        return helpers.error('any.invalid', { message: 'Name is required for name login' });
+      }
+      return obj;
+    })
   },
   handler: async (req, res) => {
     try {
-        const { email, password } = req.body;
+      const { loginType, email, phone, name, password } = req.body;
+      let user;
 
-        // Find user by email
-        const user = await Register.findOne({ email });
+      // Find user based on login type
+      switch (loginType) {
+        case 'email':
+          user = await Register.findOne({ email });
+          if (!user) {
+            return res.status(httpStatus.UNAUTHORIZED).json({ 
+              message: "Invalid email or password" 
+            });
+          }
+          break;
 
-        if (!user) {
-            return res.status(httpStatus.UNAUTHORIZED).json({ message: "Invalid email or password" });
-        }
+        case 'phone':
+          user = await Register.findOne({ phone });
+          if (!user) {
+            return res.status(httpStatus.UNAUTHORIZED).json({ 
+              message: "Invalid phone number or password" 
+            });
+          }
+          break;
 
-        // Check password match (CORRECTED)
-        const isMatch = await user.isPasswordMatch(password); // ✅ Fixed
-        console.log("Password match:", isMatch); // Debugging log
+        case 'name':
+          user = await Register.findOne({ name });
+          if (!user) {
+            return res.status(httpStatus.UNAUTHORIZED).json({ 
+              message: "Invalid name or password" 
+            });
+          }
+          break;
 
-        if (!isMatch) {
-            return res.status(httpStatus.UNAUTHORIZED).json({ message: "Invalid email or password" });
-        }
+        default:
+          return res.status(httpStatus.BAD_REQUEST).json({ 
+            message: "Invalid login type" 
+          });
+      }
 
-        // Generate token
-        const token = await tokenService.generateAuthTokens(user);
-        return res.status(httpStatus.OK).json({ token, user });
+      // Check password match
+      const isMatch = await user.isPasswordMatch(password);
+      if (!isMatch) {
+        return res.status(httpStatus.UNAUTHORIZED).json({ 
+          message: `Invalid ${loginType} or password` 
+        });
+      }
+
+      // Generate token
+      const token = await tokenService.generateAuthTokens(user);
+      return res.status(httpStatus.OK).json({ 
+        message: "Login successful",
+        token, 
+        user 
+      });
 
     } catch (error) {
-        console.error("Login Error:", error);
-        return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ message: "Internal server error" });
+      console.error("Login Error:", error);
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ 
+        message: error.message || "Internal server error" 
+      });
     }
-}
-
+  }
 };
 
 const getAllUser = {
