@@ -316,70 +316,194 @@ const getAllProducts = {
 
 const getLatestProductsByCategory = {
   validation: {
-    body: Joi.object().keys({
-      categoryName: Joi.string(),
+    query: Joi.object().keys({
+      categoryName: Joi.string().required(),
+      limit: Joi.number().integer().min(1).max(50).default(10),
     }),
   },
   handler: async (req, res) => {
     try {
-      const filter = {};
+      const { categoryName, limit = 10, excludeProductId } = req.query;
+      const filter = { categoryName };
 
-      if (req.query?.categoryName) {
-        filter.categoryName = req.query.categoryName;  
+      // Exclude current product if excludeProductId is provided
+      if (excludeProductId) {
+        filter._id = { $ne: excludeProductId };
       }
 
       const products = await Products.find(filter)
-        .sort({ createdAt: -1 }) // Sort by createdAt (latest first)
-        
-        .populate('variations');
+        .sort({ createdAt: -1 }) // Sort by latest first
+        .limit(parseInt(limit))
+        .populate({
+          path: 'variations',
+          populate: {
+            path: 'metalVariations'
+          }
+        })
+        .lean();
 
-      return res.status(httpStatus.OK).send(products);
+      // Enhance products with additional information
+      const enhancedProducts = products.map(product => {
+        // Get all unique metals from variations
+        const allMetals = product.variations.reduce((metals, variation) => {
+          if (variation.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              if (!metals.includes(mv.metal)) {
+                metals.push(mv.metal);
+              }
+            });
+          }
+          return metals;
+        }, []);
+
+        // Get price range
+        const priceRange = {
+          min: Math.min(
+            ...product.variations.reduce((prices, variation) => {
+              if (variation.metalVariations) {
+                variation.metalVariations.forEach(mv => {
+                  mv.ringSizes.forEach(rs => {
+                    prices.push(parseFloat(rs.salePrice));
+                  });
+                });
+              }
+              return prices;
+            }, [])
+          ),
+          max: Math.max(
+            ...product.variations.reduce((prices, variation) => {
+              if (variation.metalVariations) {
+                variation.metalVariations.forEach(mv => {
+                  mv.ringSizes.forEach(rs => {
+                    prices.push(parseFloat(rs.salePrice));
+                  });
+                });
+              }
+              return prices;
+            }, [])
+          )
+        };
+
+        // Get first metal variation's first image as product thumbnail
+        const thumbnail = product.variations[0]?.metalVariations[0]?.images[0] || null;
+
+        return {
+          ...product,
+          availableMetals: allMetals,
+          priceRange,
+          thumbnail
+        };
+      });
+
+      return res.status(httpStatus.OK).send(enhancedProducts);
     } catch (error) {
-      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({ message: 'Error fetching products', error });
+      console.error('Error in getLatestProductsByCategory:', error);
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
+        message: "Error fetching related products",
+        error: error.message
+      });
     }
   },
 };
 
 const getTrendingProducts = {
   validation: {
-    body: Joi.object().keys({
-      categoryName: Joi.string().required(),
-      productName: Joi.string().required(),
-      productsDescription: Joi.string().required(),
-      regularPrice: Joi.number().precision(2).required(),
-      salePrice: Joi.number().precision(2).required(),
-      discount: Joi.number().precision(2),
-      stock: Joi.string().required(),
-      productSize: Joi.alternatives()
-        .try(Joi.array().items(Joi.string()), Joi.string())
-        .required(),
-      review: Joi.string(),
-      rating: Joi.string(), // Ensure rating is a number
-      sku: Joi.string().required(),
-      image: Joi.string(),
+    query: Joi.object().keys({
+      limit: Joi.number().integer().min(1).max(50).default(10),
+      categoryName: Joi.string().optional()
     }),
   },
   handler: async (req, res) => {
     try {
-      // const products = await Products.aggregate([
-      //   {
-      //     $addFields: {
-      //       numericRating: { $toDouble: "$rating" } // Convert string rating to number
-      //     }
-      //   },
-      //   { $sort: { numericRating: -1 } },
-      //   { $limit: 4 }
-      // ]);
+      const { limit = 10, categoryName } = req.query;
+      
+      // Build filter object
+      const filter = {};
+      if (categoryName) {
+        filter.categoryName = categoryName;
+      }
 
-      const products = await Products.find()
-        .sort({ rating: -1 }) // Sort by highest rating
-        // .limit(4).populate('variations'); // Get only the top 4 products
+      // Find products and sort by creation date
+      const products = await Products.find(filter)
+        .sort({ createdAt: -1 }) // Sort by latest first
+        .limit(parseInt(limit))
+        .populate({
+          path: 'variations',
+          populate: {
+            path: 'metalVariations'
+          }
+        })
+        .lean();
 
-      return res.status(httpStatus.OK).send(products);
+      if (!products || products.length === 0) {
+        return res.status(httpStatus.OK).send({
+          message: categoryName 
+            ? `No products found in category: ${categoryName}`
+            : "No products found",
+          products: []
+        });
+      }
+
+      // Enhance products with additional information
+      const enhancedProducts = products.map(product => {
+        // Get all unique metals from variations
+        const allMetals = product.variations?.reduce((metals, variation) => {
+          if (variation?.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              if (mv?.metal && !metals.includes(mv.metal)) {
+                metals.push(mv.metal);
+              }
+            });
+          }
+          return metals;
+        }, []) || [];
+
+        // Get price range
+        const prices = product.variations?.reduce((prices, variation) => {
+          if (variation?.metalVariations) {
+            variation.metalVariations.forEach(mv => {
+              if (mv?.ringSizes) {
+                mv.ringSizes.forEach(rs => {
+                  if (rs?.salePrice) {
+                    prices.push(parseFloat(rs.salePrice));
+                  }
+                });
+              }
+            });
+          }
+          return prices;
+        }, []) || [];
+
+        const priceRange = prices.length > 0 ? {
+          min: Math.min(...prices),
+          max: Math.max(...prices)
+        } : { min: 0, max: 0 };
+
+        // Get first metal variation's first image as product thumbnail
+        let thumbnail = null;
+        if (product.variations?.[0]?.metalVariations?.[0]?.images?.[0]) {
+          thumbnail = product.variations[0].metalVariations[0].images[0];
+        }
+
+        return {
+          ...product,
+          availableMetals: allMetals,
+          priceRange,
+          thumbnail
+        };
+      });
+
+      return res.status(httpStatus.OK).send({
+        message: categoryName 
+          ? `Latest products from category: ${categoryName}`
+          : "Latest products",
+        products: enhancedProducts
+      });
     } catch (error) {
+      console.error('Error in getTrendingProducts:', error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
-        message: "Something went wrong",
-        error: error.message,
+        message: "Error fetching trending products",
+        error: error.message
       });
     }
   },
@@ -574,28 +698,48 @@ const updateProducts = {
 
 const deleteProduct = {
   handler: async (req, res) => {
-    const { _id } = req.params;
+    try {
+      const { _id } = req.params;
 
-    const productExits = await Products.findOne({ _id });
-    if (!productExits) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Products not found");
-    }
-
-    // delete old image
-    if (Array.isArray(productExits.image)) {
-      for (const imgPath of productExits.image) {
-        if (imgPath) await removeFile(imgPath);
+      // Find product with populated variations
+      const product = await Products.findById(_id).populate('variations');
+      if (!product) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
-    } else if (productExits.image) {
-      await removeFile(productExits.image);
-    }
 
-    // delete Products
-    await Products.deleteOne({ _id });
-    await ProductVariations.deleteMany({ productId: _id })
-    return res
-      .status(httpStatus.OK)
-      .send({ message: "Products deleted successfully" });
+      // Delete all images from metal variations
+      if (product.variations && product.variations.length > 0) {
+        for (const variation of product.variations) {
+          if (variation.metalVariations && variation.metalVariations.length > 0) {
+            for (const metalVariation of variation.metalVariations) {
+              if (metalVariation.images && metalVariation.images.length > 0) {
+                for (const imagePath of metalVariation.images) {
+                  if (imagePath) {
+                    await removeFile(imagePath);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Delete all variations
+      await ProductVariations.deleteMany({ productId: _id });
+
+      // Delete the product
+      await Products.deleteOne({ _id });
+
+      return res.status(httpStatus.OK).send({
+        message: "Product and its variations deleted successfully"
+      });
+    } catch (error) {
+      console.error('Error in deleteProduct:', error);
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
+        message: "Error deleting product",
+        error: error.message
+      });
+    }
   },
 };
 
@@ -606,47 +750,56 @@ const multiDeleteProducts = {
     }),
   },
   handler: async (req, res) => {
-    const { ids } = req.body;
-    const parsedIds = typeof ids === "string" ? ids.split(",") : ids;
+    try {
+      const { ids } = req.body;
+      const parsedIds = typeof ids === "string" ? ids.split(",") : ids;
 
-    if (!Array.isArray(parsedIds) || parsedIds.length === 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "No product IDs provided");
+      if (!Array.isArray(parsedIds) || parsedIds.length === 0) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "No product IDs provided");
+      }
+
+      // Find products with populated variations
+      const products = await Products.find({ _id: { $in: parsedIds } }).populate('variations');
+
+      if (!products || products.length === 0) {
+        throw new ApiError(httpStatus.NOT_FOUND, "Products not found");
+      }
+
+      // Delete all images from metal variations
+      for (const product of products) {
+        if (product.variations && product.variations.length > 0) {
+          for (const variation of product.variations) {
+            if (variation.metalVariations && variation.metalVariations.length > 0) {
+              for (const metalVariation of variation.metalVariations) {
+                if (metalVariation.images && metalVariation.images.length > 0) {
+                  for (const imagePath of metalVariation.images) {
+                    if (imagePath) {
+                      await removeFile(imagePath);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Delete all variations
+      await ProductVariations.deleteMany({ productId: { $in: parsedIds } });
+
+      // Delete the products
+      await Products.deleteMany({ _id: { $in: parsedIds } });
+
+      return res.status(httpStatus.OK).send({
+        message: `${products.length} products and their variations deleted successfully`
+      });
+    } catch (error) {
+      console.error('Error in multiDeleteProducts:', error);
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
+        message: "Error deleting products",
+        error: error.message
+      });
     }
-
-    // Fetch products to remove their images
-    const products = await Products.find({ _id: { $in: ids } });
-
-    console.log('products', products)
-
-    if (!products || products.length === 0) {
-      throw new ApiError(httpStatus.NOT_FOUND, "Products not found");
-    }
-
-    // for (const product of products) {
-    //   if (Array.isArray(product.image)) {
-    //     for (const img of product.image) {
-    //       if (img) await removeFile(img);
-    //     }
-    //   } else if (product.image) {
-    //     await removeFile(product.image);
-    //   }
-    // }
-
-    // Remove associated images
-    // for (const product of products) {
-    //   if (product?.image) {
-    //     await removeFile(product.image);
-    //   }
-    // }
-
-    console.log('ids', ids)
-
-    // Delete products from DB
-    await Products.deleteMany({ _id: { $in: ids } });
-    await ProductVariations.deleteMany({ productId: { $in: ids } })
-    return res
-      .status(httpStatus.OK)
-      .send({ message: "Products deleted successfully" });
   },
 };
 
