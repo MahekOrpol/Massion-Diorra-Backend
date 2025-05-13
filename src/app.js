@@ -64,6 +64,7 @@ app.use((req, res, next) => {
 // app.use(express.static(path.resolve("./images")));
 
 app.use('/images', express.static(path.join(__dirname, 'public/images')));
+app.use('/images', express.static(path.join(__dirname, '..','public','images'))); 
 
 app.use(uploader({
   safeFileNames: true,
