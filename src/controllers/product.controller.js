@@ -615,6 +615,12 @@ const updateProducts = {
               ? req.files[`images_${metalKey}`]
               : [req.files[`images_${metalKey}`]];
 
+              if (metalVariation.images && metalVariation.images.length > 0) {
+                for (const oldImagePath of metalVariation.images) {
+                  await removeFile(oldImagePath);  // Helper to delete old images
+                }
+              }
+              
             const imagePaths = [];
             for (const file of filesArray) {
               const { upload_path } = await saveFile(file);
