@@ -38,11 +38,11 @@ const createProduct = {
                     quantity: Joi.string().required(),
                     images: Joi.array().items(Joi.string()).required(),
                     diamondShape: Joi.object({
-                      name: Joi.string().required(),
+                      name: Joi.array().items(Joi.string()).required(),
                       image: Joi.string().required()
                     }).required(),
                     shank: Joi.object({
-                      name: Joi.string().required(),
+                      name: Joi.array().items(Joi.string()).required(),
                       image: Joi.string().required()
                     }).required(),
                     ringSizes: Joi.array().items(
@@ -838,6 +838,8 @@ const getProductById = {
   handler: async (req, res) => {
     try {
       const { id } = req.params;
+      const { metal, metalVariationId,diamondShape,shank } = req.query; // <- Grab query params
+  
       const product = await Products.findById(id)
         .populate({
           path: 'variations',
@@ -846,115 +848,104 @@ const getProductById = {
           }
         })
         .lean();
-
+  
       if (!product) {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
-
-      // Get all unique metals from variations
-      const allMetals = product.variations.reduce((metals, variation) => {
-        if (variation.metalVariations) {
-          variation.metalVariations.forEach(mv => {
-            if (!metals.includes(mv.metal)) {
-              metals.push(mv.metal);
-            }
-          });
-        }
-        return metals;
-      }, []);
-
-      // Get all ring sizes from variations
-      const allRingSizes = product.variations.reduce((sizes, variation) => {
-        if (variation.metalVariations) {
-          variation.metalVariations.forEach(mv => {
-            mv.ringSizes.forEach(rs => {
-              if (!sizes.includes(rs.productSize)) {
-                sizes.push(rs.productSize);
+  
+      // Filter variations if metal or metalVariationId is provided
+      if (metal || metalVariationId || diamondShape || shank) {
+        product.variations = product.variations.map(variation => {
+          variation.metalVariations = variation.metalVariations
+            .map(mv => {
+              // Check if metal, id match
+              if ((metal && mv.metal !== metal) || (metalVariationId && mv._id.toString() !== metalVariationId)) {
+                return null;
               }
-            });
-          });
-        }
-        return sizes;
-      }, []);
 
-      // Get price range
+              // Match diamondShape from array
+              const matchedDiamondShapes = diamondShape
+                ? mv.diamondShape?.filter(ds => ds.name === diamondShape)
+                : mv.diamondShape;
+
+              if (diamondShape && (!matchedDiamondShapes || matchedDiamondShapes.length === 0)) {
+                return null;
+              }
+
+              // Match shank from array
+              const matchedShanks = shank
+                ? mv.shank?.filter(s => s.name === shank)
+                : mv.shank;
+
+              if (shank && (!matchedShanks || matchedShanks.length === 0)) {
+                return null;
+              }
+
+              // Return filtered metal variation
+              return {
+                ...mv,
+                diamondShape: matchedDiamondShapes,
+                shank: matchedShanks
+              };
+            })
+            .filter(Boolean); // Remove nulls
+
+          return variation;
+        }).filter(variation => variation.metalVariations.length > 0);
+      }
+  
+      // Extract metadata (availableMetals, sizes, etc.)
+      const allMetals = new Set();
+      const allRingSizes = new Set();
+      const allDiamondShapes = [];
+      const allShankTypes = [];
+      const allPrices = [];
+
+      product.variations.forEach(variation => {
+        variation.metalVariations.forEach(mv => {
+          allMetals.add(mv.metal);
+          mv.ringSizes.forEach(rs => {
+            allRingSizes.add(rs.productSize);
+            allPrices.push(parseFloat(rs.salePrice));
+          });
+
+          if (mv.diamondShape && mv.diamondShape.length > 0) {
+            allDiamondShapes.push(mv.diamondShape);
+          }
+
+          if (mv.shank && mv.shank.length > 0) {
+            allShankTypes.push(mv.shank);
+          }
+        });
+      });
+
       const priceRange = {
-        min: Math.min(
-          ...product.variations.reduce((prices, variation) => {
-            if (variation.metalVariations) {
-              variation.metalVariations.forEach(mv => {
-                mv.ringSizes.forEach(rs => {
-                  prices.push(parseFloat(rs.salePrice));
-                });
-              });
-            }
-            return prices;
-          }, [])
-        ),
-        max: Math.max(
-          ...product.variations.reduce((prices, variation) => {
-            if (variation.metalVariations) {
-              variation.metalVariations.forEach(mv => {
-                mv.ringSizes.forEach(rs => {
-                  prices.push(parseFloat(rs.salePrice));
-                });
-              });
-            }
-            return prices;
-          }, [])
-        )
+        min: allPrices.length ? Math.min(...allPrices) : 0,
+        max: allPrices.length ? Math.max(...allPrices) : 0
       };
 
-      // Get all diamond shapes
-      const allDiamondShapes = product.variations.reduce((shapes, variation) => {
-        if (variation.metalVariations) {
-          variation.metalVariations.forEach(mv => {
-            if (!shapes.some(s => s.name === mv.diamondShape.name)) {
-              shapes.push(mv.diamondShape);
-            }
-          });
-        }
-        return shapes;
-      }, []);
+      const metalVariationsMap = {};
+      product.variations.forEach(variation => {
+        variation.metalVariations.forEach(mv => {
+          metalVariationsMap[mv.metal] = {
+            metal: mv.metal,
+            quantity: mv.quantity,
+            images: mv.images,
+            diamondShape: mv.diamondShape,
+            shank: mv.shank,
+            ringSizes: mv.ringSizes
+          };
+        });
+      });
 
-      // Get all shank types
-      const allShankTypes = product.variations.reduce((shanks, variation) => {
-        if (variation.metalVariations) {
-          variation.metalVariations.forEach(mv => {
-            if (!shanks.some(s => s.name === mv.shank.name)) {
-              shanks.push(mv.shank);
-            }
-          });
-        }
-        return shanks;
-      }, []);
-
-      // Enhanced product response
       const enhancedProduct = {
         ...product,
-        availableMetals: allMetals,
-        availableRingSizes: allRingSizes,
+        availableMetals: Array.from(allMetals),
+        availableRingSizes: Array.from(allRingSizes),
         availableDiamondShapes: allDiamondShapes,
         availableShankTypes: allShankTypes,
         priceRange,
-        // Group variations by metal for easier access
-        metalVariations: product.variations.reduce((acc, variation) => {
-          if (variation.metalVariations) {
-            variation.metalVariations.forEach(mv => {
-              if (!acc[mv.metal]) {
-                acc[mv.metal] = {
-                  metal: mv.metal,
-                  quantity: mv.quantity,
-                  images: mv.images,
-                  diamondShape: mv.diamondShape,
-                  shank: mv.shank,
-                  ringSizes: mv.ringSizes
-                };
-              }
-            });
-          }
-          return acc;
-        }, {})
+        metalVariations: metalVariationsMap
       };
 
       return res.status(httpStatus.OK).send(enhancedProduct);
@@ -965,7 +956,7 @@ const getProductById = {
         error: error.message
       });
     }
-  },
+  }
 };
 
 module.exports = {

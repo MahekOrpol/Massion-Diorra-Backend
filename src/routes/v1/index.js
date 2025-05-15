@@ -18,6 +18,7 @@ const giftingGuideRoute = require("./giftingGuide.route");
 const newArrivalsRoute = require("./newArrivals.route");
 const blogsRoute = require("./blogs.route");
 const authRoute= require("./auth.route");
+const reviewRoute= require("./review.route");
 
 const defaultRoutes = [
  
@@ -94,6 +95,10 @@ const defaultRoutes = [
   {
     path:'/blog',
     route: blogsRoute,
+  },
+  {
+    path:'/review',
+    route: reviewRoute,
   },
 ];
 

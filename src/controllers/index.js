@@ -16,4 +16,5 @@ module.exports.giftingGuideController=require('./giftingGuide.controller');
 module.exports.newArrivalsController=require('./newArrivals.controller');
 module.exports.blogsController=require('./blogs.controller');
 module.exports.aboutUsController=require('./aboutUs.controller');
+module.exports.reviewController=require('./review.controller');
 
