@@ -1,11 +1,4 @@
 const httpStatus = require("http-status");
-const catchAsync = require("../utils/catchAsync");
-const {
-  authService,
-  userService,
-  tokenService,
-  emailService,
-} = require("../services");
 const Joi = require("joi");
 const { password } = require("../validations/custom.validation");
 const { Products, ProductVariations, Game } = require("../models");

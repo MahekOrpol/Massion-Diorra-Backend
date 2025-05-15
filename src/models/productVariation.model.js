@@ -11,7 +11,6 @@ const ringSizeSchema = new mongoose.Schema({
 const diamondShapeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   image: { type: String, required: true },
-  
 });
 
 const shankSchema = new mongoose.Schema({
@@ -26,6 +25,7 @@ const metalVariationSchema = new mongoose.Schema({
   diamondShape: [diamondShapeSchema],
   shank: [shankSchema],
   ringSizes: [ringSizeSchema],
+  combineImages: { type: [String], default: [] },
   review: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Review",

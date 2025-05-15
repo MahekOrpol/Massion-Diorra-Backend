@@ -24,7 +24,7 @@ const wishlistSchema = mongoose.Schema(
     },
     selectedSize: {
       type: String,
-      required: true,
+      required: false,
     },
     selectedDiamondShape: {
       name: String,
@@ -36,7 +36,7 @@ const wishlistSchema = mongoose.Schema(
     },
     price: {
       type: mongoose.Schema.Types.Decimal128,
-      required: true,
+      required: false,
     }
   },
   {

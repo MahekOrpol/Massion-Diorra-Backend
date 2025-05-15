@@ -6,19 +6,17 @@ const mongoose = require("mongoose");
 const catchAsync = require("../utils/catchAsync");
 
 const createWishlist = catchAsync(async (req, res) => {
-  const { userId, productId, selectedMetal, selectedSize } = req.body;
+  const { userId, productId, selectedMetal } = req.body;
 
   // Find product with variations
   const product = await Products.findById(productId).populate('variations');
   if (!product) {
     throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
   }
-
   // Find the selected metal variation
   let selectedMetalVariation = null;
   let selectedDiamondShape = null;
   let selectedShank = null;
-  let price = 0;
 
   for (const variation of product.variations) {
     if (variation.metalVariations) {
@@ -28,11 +26,6 @@ const createWishlist = catchAsync(async (req, res) => {
           selectedDiamondShape = mv.diamondShape;
           selectedShank = mv.shank;
           
-          // Find the selected size price
-          const sizeInfo = mv.ringSizes.find(rs => rs.productSize === selectedSize);
-          if (sizeInfo) {
-            price = sizeInfo.salePrice;
-          }
           break;
         }
       }
@@ -44,16 +37,12 @@ const createWishlist = catchAsync(async (req, res) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Selected metal variation not found");
   }
 
-  if (!price) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Selected size not found for the metal variation");
-  }
 
   // Check if already in wishlist
   const existingWishlist = await Wishlist.findOne({
     userId,
     productId,
-    selectedMetal,
-    selectedSize
+    selectedMetal
   });
 
   if (existingWishlist) {
@@ -65,10 +54,8 @@ const createWishlist = catchAsync(async (req, res) => {
     userId,
     productId,
     selectedMetal,
-    selectedSize,
     selectedDiamondShape,
     selectedShank,
-    price
   });
 
   return res.status(httpStatus.CREATED).json({

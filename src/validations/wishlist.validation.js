@@ -6,7 +6,7 @@ const createWishlist = {
     userId: Joi.string().custom(objectId).required(),
     productId: Joi.string().custom(objectId).required(),
     selectedMetal: Joi.string().required(),
-    selectedSize: Joi.string().required()
+    selectedSize: Joi.string().optional()
   }),
 };
 
