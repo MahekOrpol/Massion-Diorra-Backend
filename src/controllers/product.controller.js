@@ -25,29 +25,33 @@ const createProduct = {
           .try(
             Joi.array().items(
               Joi.object({
-                metalVariations: Joi.array().items(
-                  Joi.object({
-                    metal: Joi.string().required(),
-                    quantity: Joi.string().required(),
-                    images: Joi.array().items(Joi.string()).required(),
-                    diamondShape: Joi.object({
-                      name: Joi.array().items(Joi.string()).required(),
-                      image: Joi.string().required()
-                    }).required(),
-                    shank: Joi.object({
-                      name: Joi.array().items(Joi.string()).required(),
-                      image: Joi.string().required()
-                    }).required(),
-                    ringSizes: Joi.array().items(
-                      Joi.object({
-                        productSize: Joi.string().required(),
-                        regularPrice: Joi.number().precision(2).required(),
-                        salePrice: Joi.number().precision(2).required(),
-                        quantity: Joi.number().required()
-                      })
-                    ).required()
-                  })
-                ).required()
+                metalVariations: Joi.array()
+                  .items(
+                    Joi.object({
+                      metal: Joi.string().required(),
+                      quantity: Joi.string().required(),
+                      images: Joi.array().items(Joi.string()).required(),
+                      diamondShape: Joi.object({
+                        name: Joi.array().items(Joi.string()).required(),
+                        image: Joi.string().required(),
+                      }).required(),
+                      shank: Joi.object({
+                        name: Joi.array().items(Joi.string()).required(),
+                        image: Joi.string().required(),
+                      }).required(),
+                      ringSizes: Joi.array()
+                        .items(
+                          Joi.object({
+                            productSize: Joi.string().required(),
+                            regularPrice: Joi.number().precision(2).required(),
+                            salePrice: Joi.number().precision(2).required(),
+                            quantity: Joi.number().required(),
+                          })
+                        )
+                        .required(),
+                    })
+                  )
+                  .required(),
               })
             ),
             Joi.string() // Allow JSON string
@@ -77,12 +81,12 @@ const createProduct = {
       best_selling,
       gender,
       hasVariations,
-      variations
+      variations,
     } = req.body;
 
     hasVariations = String(hasVariations).trim().toLowerCase() === "true";
 
-    if (hasVariations && typeof variations === "string") { 
+    if (hasVariations && typeof variations === "string") {
       variations = JSON.parse(variations);
     } else {
       variations = [];
@@ -125,14 +129,14 @@ const createProduct = {
       sku,
       best_selling: best_selling || "0",
       gender,
-      hasVariations
+      hasVariations,
     });
 
     if (hasVariations && Array.isArray(variations) && variations.length > 0) {
       // Process images for each metal variation
       for (const variation of variations) {
         for (const metalVariation of variation.metalVariations) {
-          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); 
+          const metalKey = metalVariation.metal.replace(/\s+/g, "_");
           if (req.files && req.files[`images_${metalKey}`]) {
             const filesArray = Array.isArray(req.files[`images_${metalKey}`])
               ? req.files[`images_${metalKey}`]
@@ -148,18 +152,20 @@ const createProduct = {
         }
       }
 
-      const variationDocs = variations.map(variation => ({
+      const variationDocs = variations.map((variation) => ({
         productId: product._id,
-        metalVariations: variation.metalVariations
+        metalVariations: variation.metalVariations,
       }));
 
       const savedVariations = await ProductVariations.insertMany(variationDocs);
-      product.variations = savedVariations.map(variation => variation._id);
+      product.variations = savedVariations.map((variation) => variation._id);
       await product.save();
     }
 
     const products = await product.save();
-    const newProduct = await Products.findById(products._id).populate('variations');
+    const newProduct = await Products.findById(products._id).populate(
+      "variations"
+    );
     return res.status(httpStatus.CREATED).send(newProduct);
   },
 };
@@ -174,7 +180,7 @@ const getAllProducts = {
       salePrice: Joi.string(),
       metal: Joi.string(),
       best_selling: Joi.string(),
-      hasVariations: Joi.boolean()
+      hasVariations: Joi.boolean(),
     }),
   },
   handler: async (req, res) => {
@@ -187,7 +193,7 @@ const getAllProducts = {
       }
 
       if (req.query?.productName) {
-        filter.productName = { $regex: req.query.productName, $options: 'i' };
+        filter.productName = { $regex: req.query.productName, $options: "i" };
       }
 
       if (req.query?.stock) {
@@ -203,7 +209,7 @@ const getAllProducts = {
       }
 
       if (req.query?.hasVariations !== undefined) {
-        filter.hasVariations = req.query.hasVariations === 'true';
+        filter.hasVariations = req.query.hasVariations === "true";
       }
 
       // Price filter
@@ -217,42 +223,52 @@ const getAllProducts = {
       // Get products with populated variations
       const products = await Products.find(filter)
         .populate({
-          path: 'variations',
+          path: "variations",
           populate: {
-            path: 'metalVariations',
-            match: req.query?.metal ? { metal: { $regex: req.query.metal, $options: 'i' } } : {}
-          }
+            path: "metalVariations",
+            match: req.query?.metal
+              ? { metal: { $regex: req.query.metal, $options: "i" } }
+              : {},
+          },
         })
         .lean();
 
       // Filter out products with no matching metal variations if metal filter is applied
       const filteredProducts = req.query?.metal
-        ? products.filter(product => 
-            product.variations.some(variation => 
-              variation.metalVariations && variation.metalVariations.length > 0
+      ? products.filter((product) =>
+          product.variations.some((variation) =>
+            variation.metalVariations?.some(
+              (mv) =>
+                mv.metal &&
+                mv.metal.toLowerCase().includes(req.query.metal.toLowerCase())
             )
           )
-        : products;
+        )
+      : products;
+    
 
       // Add additional information to each product
-      const enhancedProducts = filteredProducts.map(product => {
+      const enhancedProducts = filteredProducts.map((product) => {
+        const validVariations = product.variations.filter(v => v.metalVariations && v.metalVariations.length > 0);
+// console.log('product.variations[0] :>> ', product.variations.filter(v => v.metalVariations && v.metalVariations.length > 0));
         // Get all unique metals from variations
-        const allMetals = product.variations.reduce((metals, variation) => {
+        const allMetals = validVariations.reduce((metals, variation) => {
           if (variation.metalVariations) {
-            variation.metalVariations.forEach(mv => {
+            variation.metalVariations.forEach((mv) => {
               if (!metals.includes(mv.metal)) {
                 metals.push(mv.metal);
               }
             });
           }
+          console.log('variation :>> ', variation.metalVariations);
           return metals;
         }, []);
 
         // Get all ring sizes from variations
-        const allRingSizes = product.variations.reduce((sizes, variation) => {
+        const allRingSizes = validVariations.reduce((sizes, variation) => {
           if (variation.metalVariations) {
-            variation.metalVariations.forEach(mv => {
-              mv.ringSizes.forEach(rs => {
+            variation.metalVariations.forEach((mv) => {
+              mv.ringSizes.forEach((rs) => {
                 if (!sizes.includes(rs.productSize)) {
                   sizes.push(rs.productSize);
                 }
@@ -262,46 +278,30 @@ const getAllProducts = {
           return sizes;
         }, []);
 
+        const allPrices = product.variations.flatMap(
+          (variation) =>
+            variation.metalVariations?.flatMap(
+              (mv) => mv.ringSizes?.map((rs) => parseFloat(rs.salePrice)) || []
+            ) || []
+        );
+
         return {
           ...product,
           availableMetals: allMetals,
           availableRingSizes: allRingSizes,
-          // Get the lowest and highest prices from all variations
           priceRange: {
-            min: Math.min(
-              ...product.variations.reduce((prices, variation) => {
-                if (variation.metalVariations) {
-                  variation.metalVariations.forEach(mv => {
-                    mv.ringSizes.forEach(rs => {
-                      prices.push(parseFloat(rs.salePrice));
-                    });
-                  });
-                }
-                return prices;
-              }, [])
-            ),
-            max: Math.max(
-              ...product.variations.reduce((prices, variation) => {
-                if (variation.metalVariations) {
-                  variation.metalVariations.forEach(mv => {
-                    mv.ringSizes.forEach(rs => {
-                      prices.push(parseFloat(rs.salePrice));
-                    });
-                  });
-                }
-                return prices;
-              }, [])
-            )
-          }
+            min: Math.min(...allPrices),
+            max: Math.max(...allPrices),
+          },
         };
       });
 
       return res.status(httpStatus.OK).send(enhancedProducts);
     } catch (error) {
-      console.error('Error in getAllProducts:', error);
+      console.error("Error in getAllProducts:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error fetching products",
-        error: error.message
+        error: error.message,
       });
     }
   },
@@ -328,19 +328,19 @@ const getLatestProductsByCategory = {
         .sort({ createdAt: -1 }) // Sort by latest first
         .limit(parseInt(limit))
         .populate({
-          path: 'variations',
+          path: "variations",
           populate: {
-            path: 'metalVariations'
-          }
+            path: "metalVariations",
+          },
         })
         .lean();
 
       // Enhance products with additional information
-      const enhancedProducts = products.map(product => {
+      const enhancedProducts = products.map((product) => {
         // Get all unique metals from variations
         const allMetals = product.variations.reduce((metals, variation) => {
           if (variation.metalVariations) {
-            variation.metalVariations.forEach(mv => {
+            variation.metalVariations.forEach((mv) => {
               if (!metals.includes(mv.metal)) {
                 metals.push(mv.metal);
               }
@@ -354,8 +354,8 @@ const getLatestProductsByCategory = {
           min: Math.min(
             ...product.variations.reduce((prices, variation) => {
               if (variation.metalVariations) {
-                variation.metalVariations.forEach(mv => {
-                  mv.ringSizes.forEach(rs => {
+                variation.metalVariations.forEach((mv) => {
+                  mv.ringSizes.forEach((rs) => {
                     prices.push(parseFloat(rs.salePrice));
                   });
                 });
@@ -366,34 +366,35 @@ const getLatestProductsByCategory = {
           max: Math.max(
             ...product.variations.reduce((prices, variation) => {
               if (variation.metalVariations) {
-                variation.metalVariations.forEach(mv => {
-                  mv.ringSizes.forEach(rs => {
+                variation.metalVariations.forEach((mv) => {
+                  mv.ringSizes.forEach((rs) => {
                     prices.push(parseFloat(rs.salePrice));
                   });
                 });
               }
               return prices;
             }, [])
-          )
+          ),
         };
 
         // Get first metal variation's first image as product thumbnail
-        const thumbnail = product.variations[0]?.metalVariations[0]?.images[0] || null;
+        const thumbnail =
+          product.variations[0]?.metalVariations[0]?.images[0] || null;
 
         return {
           ...product,
           availableMetals: allMetals,
           priceRange,
-          thumbnail
+          thumbnail,
         };
       });
 
       return res.status(httpStatus.OK).send(enhancedProducts);
     } catch (error) {
-      console.error('Error in getLatestProductsByCategory:', error);
+      console.error("Error in getLatestProductsByCategory:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error fetching related products",
-        error: error.message
+        error: error.message,
       });
     }
   },
@@ -403,13 +404,13 @@ const getTrendingProducts = {
   validation: {
     query: Joi.object().keys({
       limit: Joi.number().integer().min(1).max(50).default(10),
-      categoryName: Joi.string().optional()
+      categoryName: Joi.string().optional(),
     }),
   },
   handler: async (req, res) => {
     try {
       const { limit = 4, categoryName } = req.query;
-      
+
       // Build filter object
       const filter = {};
       if (categoryName) {
@@ -421,56 +422,61 @@ const getTrendingProducts = {
         .sort({ createdAt: -1 }) // Sort by latest first
         .limit(parseInt(limit))
         .populate({
-          path: 'variations',
+          path: "variations",
           populate: {
-            path: 'metalVariations'
-          }
+            path: "metalVariations",
+          },
         })
         .lean();
 
       if (!products || products.length === 0) {
         return res.status(httpStatus.OK).send({
-          message: categoryName 
+          message: categoryName
             ? `No products found in category: ${categoryName}`
             : "No products found",
-          products: []
+          products: [],
         });
       }
 
       // Enhance products with additional information
-      const enhancedProducts = products.map(product => {
+      const enhancedProducts = products.map((product) => {
         // Get all unique metals from variations
-        const allMetals = product.variations?.reduce((metals, variation) => {
-          if (variation?.metalVariations) {
-            variation.metalVariations.forEach(mv => {
-              if (mv?.metal && !metals.includes(mv.metal)) {
-                metals.push(mv.metal);
-              }
-            });
-          }
-          return metals;
-        }, []) || [];
+        const allMetals =
+          product.variations?.reduce((metals, variation) => {
+            if (variation?.metalVariations) {
+              variation.metalVariations.forEach((mv) => {
+                if (mv?.metal && !metals.includes(mv.metal)) {
+                  metals.push(mv.metal);
+                }
+              });
+            }
+            return metals;
+          }, []) || [];
 
         // Get price range
-        const prices = product.variations?.reduce((prices, variation) => {
-          if (variation?.metalVariations) {
-            variation.metalVariations.forEach(mv => {
-              if (mv?.ringSizes) {
-                mv.ringSizes.forEach(rs => {
-                  if (rs?.salePrice) {
-                    prices.push(parseFloat(rs.salePrice));
-                  }
-                });
-              }
-            });
-          }
-          return prices;
-        }, []) || [];
+        const prices =
+          product.variations?.reduce((prices, variation) => {
+            if (variation?.metalVariations) {
+              variation.metalVariations.forEach((mv) => {
+                if (mv?.ringSizes) {
+                  mv.ringSizes.forEach((rs) => {
+                    if (rs?.salePrice) {
+                      prices.push(parseFloat(rs.salePrice));
+                    }
+                  });
+                }
+              });
+            }
+            return prices;
+          }, []) || [];
 
-        const priceRange = prices.length > 0 ? {
-          min: Math.min(...prices),
-          max: Math.max(...prices)
-        } : { min: 0, max: 0 };
+        const priceRange =
+          prices.length > 0
+            ? {
+                min: Math.min(...prices),
+                max: Math.max(...prices),
+              }
+            : { min: 0, max: 0 };
 
         // Get first metal variation's first image as product thumbnail
         let thumbnail = null;
@@ -482,21 +488,21 @@ const getTrendingProducts = {
           ...product,
           availableMetals: allMetals,
           priceRange,
-          thumbnail
+          thumbnail,
         };
       });
 
       return res.status(httpStatus.OK).send({
-        message: categoryName 
+        message: categoryName
           ? `Latest products from category: ${categoryName}`
           : "Latest products",
-        products: enhancedProducts
+        products: enhancedProducts,
       });
     } catch (error) {
-      console.error('Error in getTrendingProducts:', error);
+      console.error("Error in getTrendingProducts:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error fetching trending products",
-        error: error.message
+        error: error.message,
       });
     }
   },
@@ -509,7 +515,8 @@ const getProductsByPrice = {
         ? parseFloat(req.query.salePrice)
         : 1999; // Default: ₹1,999
 
-      const products = await Products.find({ salePrice: { $lt: maxPrice } }).populate('variations') // Filter products by salePrice
+      const products = await Products.find({ salePrice: { $lt: maxPrice } })
+        .populate("variations") // Filter products by salePrice
         .sort({ rating: -1 }); // Sort by highest rating
 
       return res.status(httpStatus.OK).json(products);
@@ -530,7 +537,9 @@ const getBestSelling = {
   },
   handler: async (req, res) => {
     try {
-      const bestSellingProducts = await Products.find({ best_selling: "1" }).populate('variations');
+      const bestSellingProducts = await Products.find({
+        best_selling: "1",
+      }).populate("variations");
 
       return res.status(httpStatus.OK).send(bestSellingProducts);
     } catch (error) {
@@ -546,8 +555,8 @@ const getOnSale = {
   handler: async (req, res) => {
     try {
       const onSaleProducts = await Products.find({ discount: { $gt: 0 } }) // Get products with discount > 0
-        .sort({ discount: -1 }) // Sort by highest discount first
-        // .limit(4).populate('variations'); // Limit to 4 products
+        .sort({ discount: -1 }); // Sort by highest discount first
+      // .limit(4).populate('variations'); // Limit to 4 products
 
       return res.status(httpStatus.OK).json(onSaleProducts);
     } catch (error) {
@@ -602,18 +611,18 @@ const updateProducts = {
       // Process images for each metal variation
       for (const variation of variations) {
         for (const metalVariation of variation.metalVariations) {
-          const metalKey = metalVariation.metal.replace(/\s+/g, '_'); // Convert spaces to underscores
+          const metalKey = metalVariation.metal.replace(/\s+/g, "_"); // Convert spaces to underscores
           if (req.files && req.files[`images_${metalKey}`]) {
             const filesArray = Array.isArray(req.files[`images_${metalKey}`])
               ? req.files[`images_${metalKey}`]
               : [req.files[`images_${metalKey}`]];
 
-              if (metalVariation.images && metalVariation.images.length > 0) {
-                for (const oldImagePath of metalVariation.images) {
-                  await removeFile(oldImagePath);  // Helper to delete old images
-                }
+            if (metalVariation.images && metalVariation.images.length > 0) {
+              for (const oldImagePath of metalVariation.images) {
+                await removeFile(oldImagePath); // Helper to delete old images
               }
-              
+            }
+
             const imagePaths = [];
             for (const file of filesArray) {
               const { upload_path } = await saveFile(file);
@@ -625,32 +634,39 @@ const updateProducts = {
       }
 
       // Track variations
-      const existingVariationIds = product.variations.map((v) => v._id.toString());
+      const existingVariationIds = product.variations.map((v) =>
+        v._id.toString()
+      );
       const newVariationDocs = [];
 
       for (const variation of variations) {
         if (variation._id && existingVariationIds.includes(variation._id)) {
           // Update existing variation
           await ProductVariations.findByIdAndUpdate(variation._id, {
-            metalVariations: variation.metalVariations
+            metalVariations: variation.metalVariations,
           });
         } else {
           // Create new variation
           newVariationDocs.push({
             productId: product._id,
-            metalVariations: variation.metalVariations
+            metalVariations: variation.metalVariations,
           });
         }
       }
 
       // Save new variations
-      const savedVariations = await ProductVariations.insertMany(newVariationDocs);
+      const savedVariations = await ProductVariations.insertMany(
+        newVariationDocs
+      );
       const newVariationIds = savedVariations.map((v) => v._id.toString());
       const existingVariationIdsToKeep = variations
         .map((v) => v._id)
         .filter((id) => id && existingVariationIds.includes(id));
 
-      const updatedVariationIds = [...existingVariationIdsToKeep, ...newVariationIds];
+      const updatedVariationIds = [
+        ...existingVariationIdsToKeep,
+        ...newVariationIds,
+      ];
 
       // Remove deleted variations
       const variationsToDelete = existingVariationIds.filter(
@@ -658,7 +674,9 @@ const updateProducts = {
       );
 
       if (variationsToDelete.length > 0) {
-        await ProductVariations.deleteMany({ _id: { $in: variationsToDelete } });
+        await ProductVariations.deleteMany({
+          _id: { $in: variationsToDelete },
+        });
       }
 
       product.variations = updatedVariationIds;
@@ -679,7 +697,7 @@ const updateProducts = {
       "discount",
       "best_selling",
       "sku",
-      "categoryName"
+      "categoryName",
     ];
 
     fieldsToUpdate.forEach((field) => {
@@ -701,7 +719,7 @@ const deleteProduct = {
       const { _id } = req.params;
 
       // Find product with populated variations
-      const product = await Products.findById(_id).populate('variations');
+      const product = await Products.findById(_id).populate("variations");
       if (!product) {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
@@ -709,7 +727,10 @@ const deleteProduct = {
       // Delete all images from metal variations
       if (product.variations && product.variations.length > 0) {
         for (const variation of product.variations) {
-          if (variation.metalVariations && variation.metalVariations.length > 0) {
+          if (
+            variation.metalVariations &&
+            variation.metalVariations.length > 0
+          ) {
             for (const metalVariation of variation.metalVariations) {
               if (metalVariation.images && metalVariation.images.length > 0) {
                 for (const imagePath of metalVariation.images) {
@@ -730,13 +751,13 @@ const deleteProduct = {
       await Products.deleteOne({ _id });
 
       return res.status(httpStatus.OK).send({
-        message: "Product and its variations deleted successfully"
+        message: "Product and its variations deleted successfully",
       });
     } catch (error) {
-      console.error('Error in deleteProduct:', error);
+      console.error("Error in deleteProduct:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error deleting product",
-        error: error.message
+        error: error.message,
       });
     }
   },
@@ -758,7 +779,9 @@ const multiDeleteProducts = {
       }
 
       // Find products with populated variations
-      const products = await Products.find({ _id: { $in: parsedIds } }).populate('variations');
+      const products = await Products.find({
+        _id: { $in: parsedIds },
+      }).populate("variations");
 
       if (!products || products.length === 0) {
         throw new ApiError(httpStatus.NOT_FOUND, "Products not found");
@@ -768,7 +791,10 @@ const multiDeleteProducts = {
       for (const product of products) {
         if (product.variations && product.variations.length > 0) {
           for (const variation of product.variations) {
-            if (variation.metalVariations && variation.metalVariations.length > 0) {
+            if (
+              variation.metalVariations &&
+              variation.metalVariations.length > 0
+            ) {
               for (const metalVariation of variation.metalVariations) {
                 if (metalVariation.images && metalVariation.images.length > 0) {
                   for (const imagePath of metalVariation.images) {
@@ -790,13 +816,13 @@ const multiDeleteProducts = {
       await Products.deleteMany({ _id: { $in: parsedIds } });
 
       return res.status(httpStatus.OK).send({
-        message: `${products.length} products and their variations deleted successfully`
+        message: `${products.length} products and their variations deleted successfully`,
       });
     } catch (error) {
-      console.error('Error in multiDeleteProducts:', error);
+      console.error("Error in multiDeleteProducts:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error deleting products",
-        error: error.message
+        error: error.message,
       });
     }
   },
@@ -812,7 +838,7 @@ const getSingleProduct = {
     const { productId } = req.params;
 
     // Check if product exists
-    const product = await Products.findById(productId).populate('variations');
+    const product = await Products.findById(productId).populate("variations");
 
     if (!product) {
       throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
@@ -831,62 +857,70 @@ const getProductById = {
   handler: async (req, res) => {
     try {
       const { id } = req.params;
-      const { metal, metalVariationId,diamondShape,shank } = req.query; // <- Grab query params
-  
+      const { metal, metalVariationId, diamondShape, shank } = req.query; // <- Grab query params
+
       const product = await Products.findById(id)
         .populate({
-          path: 'variations',
+          path: "variations",
           populate: {
-            path: 'metalVariations'
-          }
+            path: "metalVariations",
+          },
         })
         .lean();
-  
+
       if (!product) {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
-  
+
       // Filter variations if metal or metalVariationId is provided
       if (metal || metalVariationId || diamondShape || shank) {
-        product.variations = product.variations.map(variation => {
-          variation.metalVariations = variation.metalVariations
-            .map(mv => {
-              // Check if metal, id match
-              if ((metal && mv.metal !== metal) || (metalVariationId && mv._id.toString() !== metalVariationId)) {
-                return null;
-              }
+        product.variations = product.variations
+          .map((variation) => {
+            variation.metalVariations = variation.metalVariations
+              .map((mv) => {
+                // Check if metal, id match
+                if (
+                  (metal && mv.metal !== metal) ||
+                  (metalVariationId && mv._id.toString() !== metalVariationId)
+                ) {
+                  return null;
+                }
 
-              // Match diamondShape from array
-              const matchedDiamondShapes = diamondShape
-                ? mv.diamondShape?.filter(ds => ds.name === diamondShape)
-                : mv.diamondShape;
+                // Match diamondShape from array
+                const matchedDiamondShapes = diamondShape
+                  ? mv.diamondShape?.filter((ds) => ds.name === diamondShape)
+                  : mv.diamondShape;
 
-              if (diamondShape && (!matchedDiamondShapes || matchedDiamondShapes.length === 0)) {
-                return null;
-              }
+                if (
+                  diamondShape &&
+                  (!matchedDiamondShapes || matchedDiamondShapes.length === 0)
+                ) {
+                  return null;
+                }
 
-              // Match shank from array
-              const matchedShanks = shank
-                ? mv.shank?.filter(s => s.name === shank)
-                : mv.shank;
+                // Match shank from array
+                const matchedShanks = shank
+                  ? mv.shank?.filter((s) => s.name === shank)
+                  : mv.shank;
 
-              if (shank && (!matchedShanks || matchedShanks.length === 0)) {
-                return null;
-              }
+                if (shank && (!matchedShanks || matchedShanks.length === 0)) {
+                  return null;
+                }
 
-              // Return filtered metal variation
-              return {
-                ...mv,
-                diamondShape: matchedDiamondShapes,
-                shank: matchedShanks
-              };
-            })
-            .filter(Boolean); // Remove nulls
+                // Return filtered metal variation
+                return {
+                  ...mv,
+                  diamondShape: matchedDiamondShapes,
+                  shank: matchedShanks,
+                };
+              })
+              .filter(Boolean); // Remove nulls
 
-          return variation;
-        }).filter(variation => variation.metalVariations.length > 0);
+            return variation;
+          })
+          .filter((variation) => variation.metalVariations.length > 0);
       }
-  
+
       // Extract metadata (availableMetals, sizes, etc.)
       const allMetals = new Set();
       const allRingSizes = new Set();
@@ -894,10 +928,10 @@ const getProductById = {
       const allShankTypes = [];
       const allPrices = [];
 
-      product.variations.forEach(variation => {
-        variation.metalVariations.forEach(mv => {
+      product.variations.forEach((variation) => {
+        variation.metalVariations.forEach((mv) => {
           allMetals.add(mv.metal);
-          mv.ringSizes.forEach(rs => {
+          mv.ringSizes.forEach((rs) => {
             allRingSizes.add(rs.productSize);
             allPrices.push(parseFloat(rs.salePrice));
           });
@@ -914,19 +948,19 @@ const getProductById = {
 
       const priceRange = {
         min: allPrices.length ? Math.min(...allPrices) : 0,
-        max: allPrices.length ? Math.max(...allPrices) : 0
+        max: allPrices.length ? Math.max(...allPrices) : 0,
       };
 
       const metalVariationsMap = {};
-      product.variations.forEach(variation => {
-        variation.metalVariations.forEach(mv => {
+      product.variations.forEach((variation) => {
+        variation.metalVariations.forEach((mv) => {
           metalVariationsMap[mv.metal] = {
             metal: mv.metal,
             quantity: mv.quantity,
             images: mv.images,
             diamondShape: mv.diamondShape,
             shank: mv.shank,
-            ringSizes: mv.ringSizes
+            ringSizes: mv.ringSizes,
           };
         });
       });
@@ -938,18 +972,18 @@ const getProductById = {
         availableDiamondShapes: allDiamondShapes,
         availableShankTypes: allShankTypes,
         priceRange,
-        metalVariations: metalVariationsMap
+        metalVariations: metalVariationsMap,
       };
 
       return res.status(httpStatus.OK).send(enhancedProduct);
     } catch (error) {
-      console.error('Error in getProductById:', error);
+      console.error("Error in getProductById:", error);
       return res.status(httpStatus.INTERNAL_SERVER_ERROR).send({
         message: "Error fetching product",
-        error: error.message
+        error: error.message,
       });
     }
-  }
+  },
 };
 
 module.exports = {
@@ -964,5 +998,5 @@ module.exports = {
   multiDeleteProducts,
   getProductsByPrice,
   getProductById,
-  getLatestProductsByCategory
+  getLatestProductsByCategory,
 };
