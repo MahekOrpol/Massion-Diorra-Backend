@@ -169,9 +169,8 @@ const getAllWishlists = catchAsync(async (req, res) => {
     const product = item.productId;
     let thumbnail = null;
     let allImages = [];
-
-    // Find the selected metal variation's images
-    if (product.variations) {
+  
+    if (product && product.variations) {
       for (const variation of product.variations) {
         if (variation.metalVariations) {
           for (const mv of variation.metalVariations) {
@@ -187,7 +186,7 @@ const getAllWishlists = catchAsync(async (req, res) => {
         if (thumbnail) break;
       }
     }
-
+  
     return {
       _id: item._id,
       createdAt: item.createdAt,
@@ -199,24 +198,27 @@ const getAllWishlists = catchAsync(async (req, res) => {
       selectedDiamondShape: item.selectedDiamondShape,
       selectedShank: item.selectedShank,
       price: item.price,
-      product: {
-        _id: product._id,
-        productName: product.productName,
-        productsDescription: product.productsDescription,
-        categoryName: product.categoryName,
-        gender: product.gender,
-        best_selling: product.best_selling,
-        sku: product.sku,
-        stock: product.stock,
-        regularPrice: product.regularPrice,
-        salePrice: product.salePrice,
-        discount: product.discount,
-        thumbnail,
-        images: allImages,
-        variations: product.variations
-      }
+      product: product
+        ? {
+            _id: product._id,
+            productName: product.productName,
+            productsDescription: product.productsDescription,
+            categoryName: product.categoryName,
+            gender: product.gender,
+            best_selling: product.best_selling,
+            sku: product.sku,
+            stock: product.stock,
+            regularPrice: product.regularPrice,
+            salePrice: product.salePrice,
+            discount: product.discount,
+            thumbnail,
+            images: allImages,
+            variations: product.variations
+          }
+        : null
     };
   });
+  
 
   return res.status(httpStatus.OK).json({
     message: "All wishlists retrieved successfully",
