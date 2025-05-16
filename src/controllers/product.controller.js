@@ -408,7 +408,7 @@ const getTrendingProducts = {
   },
   handler: async (req, res) => {
     try {
-      const { limit = 10, categoryName } = req.query;
+      const { limit = 4, categoryName } = req.query;
       
       // Build filter object
       const filter = {};
