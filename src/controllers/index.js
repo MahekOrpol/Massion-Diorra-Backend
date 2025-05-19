@@ -17,4 +17,6 @@ module.exports.newArrivalsController=require('./newArrivals.controller');
 module.exports.blogsController=require('./blogs.controller');
 module.exports.aboutUsController=require('./aboutUs.controller');
 module.exports.reviewController=require('./review.controller');
+module.exports.metalController=require('./metal.controller');
+module.exports.diamondShapeController=require('./diamondShape.controller');
 

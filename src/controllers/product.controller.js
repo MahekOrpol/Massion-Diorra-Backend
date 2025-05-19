@@ -178,7 +178,7 @@ const getAllProducts = {
       stock: Joi.string(),
       gender: Joi.string(),
       salePrice: Joi.string(),
-      metal: Joi.string(),
+      metal: Joi.string(), // e.g., "Gold,Platinum"
       best_selling: Joi.string(),
       hasVariations: Joi.boolean(),
     }),
@@ -220,69 +220,80 @@ const getAllProducts = {
         }
       }
 
-      // Get products with populated variations
+      // Parse metals from query
+      const metalArray = req.query?.metal
+        ? req.query.metal.split(",").map((m) => m.trim())
+        : [];
+
+      // Fetch products with populated variations and matched metalVariations
       const products = await Products.find(filter)
         .populate({
           path: "variations",
           populate: {
             path: "metalVariations",
-            match: req.query?.metal
-              ? { metal: { $regex: req.query.metal, $options: "i" } }
-              : {},
+            match: metalArray.length > 0 ? { metal: { $in: metalArray } } : {},
           },
         })
         .lean();
 
-      // Filter out products with no matching metal variations if metal filter is applied
-      const filteredProducts = req.query?.metal
-      ? products.filter((product) =>
-          product.variations.some((variation) =>
-            variation.metalVariations?.some(
-              (mv) =>
-                mv.metal &&
-                mv.metal.toLowerCase().includes(req.query.metal.toLowerCase())
-            )
-          )
-        )
-      : products;
-    
+      // Filter out products with no matching metal variations if metal filter applied
+      let filteredProducts = products;
 
-      // Add additional information to each product
+      if (metalArray.length > 0) {
+        filteredProducts = products
+          .map((product) => {
+            // Keep only variations that have matching metalVariations
+            const filteredVariations = product.variations
+              .map((variation) => {
+                const matchingMetalVariations = (variation.metalVariations || []).filter(
+                  (mv) => mv.metal && metalArray.includes(mv.metal)
+                );
+                return matchingMetalVariations.length > 0
+                  ? { ...variation, metalVariations: matchingMetalVariations }
+                  : null;
+              })
+              .filter(Boolean); // remove nulls
+      
+            // Only include product if it has at least one valid variation
+            if (filteredVariations.length > 0) {
+              return { ...product, variations: filteredVariations };
+            }
+            return null;
+          })
+          .filter(Boolean);
+      }
+          
+
+      // Enhance response
       const enhancedProducts = filteredProducts.map((product) => {
-        const validVariations = product.variations.filter(v => v.metalVariations && v.metalVariations.length > 0);
-// console.log('product.variations[0] :>> ', product.variations.filter(v => v.metalVariations && v.metalVariations.length > 0));
-        // Get all unique metals from variations
+        const validVariations = product.variations.filter(
+          (v) => v.metalVariations && v.metalVariations.length > 0
+        );
+
         const allMetals = validVariations.reduce((metals, variation) => {
-          if (variation.metalVariations) {
-            variation.metalVariations.forEach((mv) => {
-              if (!metals.includes(mv.metal)) {
-                metals.push(mv.metal);
-              }
-            });
-          }
-          console.log('variation :>> ', variation.metalVariations);
+          variation.metalVariations.forEach((mv) => {
+            if (!metals.includes(mv.metal)) {
+              metals.push(mv.metal);
+            }
+          });
           return metals;
         }, []);
 
-        // Get all ring sizes from variations
         const allRingSizes = validVariations.reduce((sizes, variation) => {
-          if (variation.metalVariations) {
-            variation.metalVariations.forEach((mv) => {
-              mv.ringSizes.forEach((rs) => {
-                if (!sizes.includes(rs.productSize)) {
-                  sizes.push(rs.productSize);
-                }
-              });
+          variation.metalVariations.forEach((mv) => {
+            mv.ringSizes.forEach((rs) => {
+              if (!sizes.includes(rs.productSize)) {
+                sizes.push(rs.productSize);
+              }
             });
-          }
+          });
           return sizes;
         }, []);
 
-        const allPrices = product.variations.flatMap(
-          (variation) =>
-            variation.metalVariations?.flatMap(
-              (mv) => mv.ringSizes?.map((rs) => parseFloat(rs.salePrice)) || []
-            ) || []
+        const allPrices = validVariations.flatMap((variation) =>
+          variation.metalVariations.flatMap((mv) =>
+            mv.ringSizes?.map((rs) => parseFloat(rs.salePrice)) || []
+          )
         );
 
         return {
