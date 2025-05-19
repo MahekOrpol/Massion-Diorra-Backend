@@ -54,21 +54,27 @@ const deleteTestimonial = {
 
 const getTestimonials = {
   handler: async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
     const filter = {};
-    filter.isVisible = req.query.isVisible === "false" ? false : true;
+    // filter.isVisible = req.query.isVisible === "false" ? false : true;
 
-    const testimonials = await Testimonial.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const testimonials = await Testimonial.find(filter).sort({ createdAt: -1 });
 
-    const total = await Testimonial.countDocuments(filter);
+    const total = testimonials.length;
 
-    res.send({ page, limit, total, testimonials });
+    res.setHeader("Content-Range", `testimonials 0-${total - 1}/${total}`);
+
+    res.status(200).json(testimonials);
+  },
+};
+const getTestimonialById = {
+  handler: async (req, res) => {
+    const testimonial = await Testimonial.findById(req.params.id);
+
+    if (!testimonial) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Testimonial not found");
+    }
+
+    res.send(testimonial);
   },
 };
 
@@ -77,4 +83,5 @@ module.exports = {
   updateTestimonial,
   deleteTestimonial,
   getTestimonials,
+  getTestimonialById,
 };

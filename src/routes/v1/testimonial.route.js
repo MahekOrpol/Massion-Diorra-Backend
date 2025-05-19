@@ -14,7 +14,8 @@ router
 
 router
   .route("/:id")
-  .patch(
+  .get(catchAsync(testimonialController.getTestimonialById.handler))
+  .put(
     validate(testimonialController.updateTestimonial.validation),
     catchAsync(testimonialController.updateTestimonial.handler)
   )

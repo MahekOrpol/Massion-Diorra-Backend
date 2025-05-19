@@ -56,6 +56,7 @@ app.use((req, res, next) => {
   );
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Expose-Headers", "Content-Length");
+  res.header("Access-Control-Expose-Headers", "Content-Range");
   req.headers.host =
     "https://4fd2-2402-a00-162-d066-7949-5f68-f64d-f490.ngrok-free.app";
   next();
