@@ -181,6 +181,7 @@ const getAllProducts = {
       metal: Joi.string(), // e.g., "Gold,Platinum"
       best_selling: Joi.string(),
       hasVariations: Joi.boolean(),
+      diamondShape: Joi.string(),
     }),
   },
   handler: async (req, res) => {
@@ -225,13 +226,26 @@ const getAllProducts = {
         ? req.query.metal.split(",").map((m) => m.trim())
         : [];
 
+        const diamondArray = req.query.diamondShape
+        ? req.query.diamondShape.split(",").map(d => d.trim())
+        : [];
+
       // Fetch products with populated variations and matched metalVariations
       const products = await Products.find(filter)
         .populate({
           path: "variations",
           populate: {
             path: "metalVariations",
-            match: metalArray.length > 0 ? { metal: { $in: metalArray } } : {},
+            match:
+            metalArray.length > 0 || diamondArray.length > 0
+              ? {
+                  ...(metalArray.length > 0 && { metal: { $in: metalArray } }),
+                  ...(diamondArray.length > 0 && {
+                    "diamondShape.name": { $in: diamondArray },
+                  }),
+                }
+              : {},
+            // match: metalArray.length > 0 ? { metal: { $in: metalArray } } : {}, // only metal filter
           },
         })
         .lean();
@@ -244,15 +258,21 @@ const getAllProducts = {
           .map((product) => {
             // Keep only variations that have matching metalVariations
             const filteredVariations = product.variations
-              .map((variation) => {
-                const matchingMetalVariations = (variation.metalVariations || []).filter(
-                  (mv) => mv.metal && metalArray.includes(mv.metal)
-                );
-                return matchingMetalVariations.length > 0
-                  ? { ...variation, metalVariations: matchingMetalVariations }
-                  : null;
-              })
-              .filter(Boolean); // remove nulls
+            .map((variation) => {
+              const matchingMetalVariations = (variation.metalVariations || []).filter((mv) => {
+                const metalMatch = metalArray.length === 0 || metalArray.includes(mv.metal);
+                const diamondMatch =
+                  diamondArray.length === 0 ||
+                  (mv.diamondShape || []).some((ds) => diamondArray.includes(ds.name));
+                return metalMatch && diamondMatch;
+              });
+          
+              return matchingMetalVariations.length > 0
+                ? { ...variation, metalVariations: matchingMetalVariations }
+                : null;
+            })
+            .filter(Boolean); // remove nulls
+          
       
             // Only include product if it has at least one valid variation
             if (filteredVariations.length > 0) {
