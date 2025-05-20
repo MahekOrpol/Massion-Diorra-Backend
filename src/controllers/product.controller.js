@@ -272,7 +272,6 @@ const createProduct = {
   }
 };
 
-
 const getAllProducts = {
   validation: {
     query: Joi.object().keys({
@@ -324,13 +323,13 @@ const getAllProducts = {
         }
       }
 
-      // Parse metals from query
+      // Parse metals and diamond shapes from query
       const metalArray = req.query?.metal
         ? req.query.metal.split(",").map((m) => m.trim())
         : [];
 
-        const diamondArray = req.query.diamondShape
-        ? req.query.diamondShape.split(",").map(d => d.trim())
+      const diamondArray = req.query?.diamondShape
+        ? req.query.diamondShape.split(",").map((d) => d.trim())
         : [];
 
       // Fetch products with populated variations and matched metalVariations
@@ -340,15 +339,14 @@ const getAllProducts = {
           populate: {
             path: "metalVariations",
             match:
-            metalArray.length > 0 || diamondArray.length > 0
-              ? {
-                  ...(metalArray.length > 0 && { metal: { $in: metalArray } }),
-                  ...(diamondArray.length > 0 && {
-                    "diamondShape.name": { $in: diamondArray },
-                  }),
-                }
-              : {},
-            // match: metalArray.length > 0 ? { metal: { $in: metalArray } } : {}, // only metal filter
+              metalArray.length > 0 || diamondArray.length > 0
+                ? {
+                    ...(metalArray.length > 0 && { metal: { $in: metalArray } }),
+                    ...(diamondArray.length > 0 && {
+                      "diamondShape.name": { $in: diamondArray },
+                    }),
+                  }
+                : {},
           },
         })
         .lean();
@@ -356,30 +354,66 @@ const getAllProducts = {
       // Filter out products with no matching metal variations if metal filter applied
       let filteredProducts = products;
 
-      if (metalArray.length > 0) {
+      if (metalArray.length > 0 || diamondArray.length > 0) {
         filteredProducts = products
           .map((product) => {
             // Keep only variations that have matching metalVariations
             const filteredVariations = product.variations
-            .map((variation) => {
-              const matchingMetalVariations = (variation.metalVariations || []).filter((mv) => {
-                const metalMatch = metalArray.length === 0 || metalArray.includes(mv.metal);
-                const diamondMatch =
-                  diamondArray.length === 0 ||
-                  (mv.diamondShape || []).some((ds) => diamondArray.includes(ds.name));
-                return metalMatch && diamondMatch;
-              });
-          
-              return matchingMetalVariations.length > 0
-                ? { ...variation, metalVariations: matchingMetalVariations }
-                : null;
-            })
-            .filter(Boolean); // remove nulls
-          
-      
+              .map((variation) => {
+                const matchingMetalVariations = (
+                  variation.metalVariations || []
+                ).filter((mv) => {
+                  const metalMatch =
+                    metalArray.length === 0 ||
+                    metalArray.includes(mv.metal);
+                  const diamondMatch =
+                    diamondArray.length === 0 ||
+                    (mv.diamondShape || []).some((ds) =>
+                      diamondArray.includes(ds.name)
+                    );
+                  return metalMatch && diamondMatch;
+                });
+
+                // Filter combinationImages if diamondShape is provided
+                const metalVariationsWithFilteredCombinations = matchingMetalVariations.map(
+                  (mv) => {
+                    if (diamondArray.length > 0 && mv.combinationImages) {
+                      return {
+                        ...mv,
+                        combinationImages: mv.combinationImages.filter((ci) =>
+                          diamondArray.includes(ci.diamondShape)
+                )}   
+                    }
+                    return mv;
+                  }
+                );
+
+                return metalVariationsWithFilteredCombinations.length > 0
+                  ? {
+                      ...variation,
+                      metalVariations: metalVariationsWithFilteredCombinations,
+                    }
+                  : null;
+              })
+              .filter(Boolean); // remove nulls
+
+            // Filter product-level combinationImages if they exist
+            let filteredCombinationImages = [];
+            if (product.combinationImages && diamondArray.length > 0) {
+              filteredCombinationImages = product.combinationImages.filter((ci) =>
+                diamondArray.includes(ci.diamondShape)
+              );
+            }
+
             // Only include product if it has at least one valid variation
             if (filteredVariations.length > 0) {
-              return { ...product, variations: filteredVariations };
+              return {
+                ...product,
+                variations: filteredVariations,
+                ...(diamondArray.length > 0 && {
+                  combinationImages: filteredCombinationImages,
+                }),
+              };
             }
             return null;
           })
