@@ -1006,8 +1006,8 @@ const getProductById = {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
 
-      if (metal || metalVariationId || diamondShape || shank) {
-      // if (metal || metalVariationId ) {
+      // if (metal || metalVariationId || diamondShape || shank) {
+      if (metal || metalVariationId ) {
         product.variations = product.variations
           .map((variation) => {
             variation.metalVariations = variation.metalVariations
