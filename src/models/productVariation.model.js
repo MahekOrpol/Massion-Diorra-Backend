@@ -18,7 +18,7 @@ const shankSchema = new mongoose.Schema({
   image: { type: String, required: true },
 });
 
-const metalVariationSchema = new mongoose.Schema({
+const metalVariationSchema = new mongoose.Schema({  
   metal: { type: String, required: true },
   quantity: { type: String, required: true },
   images: { type: [String], default: [] },

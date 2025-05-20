@@ -15,11 +15,11 @@ const createProduct = {
         productsDescription: Joi.string().required(),
         regularPrice: Joi.number().precision(2).required(),
         salePrice: Joi.number().precision(2).required(),
-        discount: Joi.number().precision(2),
+        discount: Joi.number().precision(2).default(0),
         stock: Joi.string().required(),
         sku: Joi.string().required(),
-        best_selling: Joi.string(),
-        gender: Joi.string(),
+        best_selling: Joi.string().default("0"),
+        gender: Joi.string().default(""),
         hasVariations: Joi.boolean().default(false),
         variations: Joi.alternatives()
           .try(
@@ -30,15 +30,23 @@ const createProduct = {
                     Joi.object({
                       metal: Joi.string().required(),
                       quantity: Joi.string().required(),
-                      images: Joi.array().items(Joi.string()).required(),
-                      diamondShape: Joi.array().items(Joi.object({
-                        name: Joi.string().required(),
-                        image: Joi.string().required(),
-                      })).required(),
-                      shank: Joi.array().items(Joi.object({
-                        name: Joi.string().required(),
-                        image: Joi.string().required(),
-                      })).required(),
+                      images: Joi.array().items(Joi.string()).default([]),
+                      diamondShape: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
+                      shank: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
                       ringSizes: Joi.array()
                         .items(
                           Joi.object({
@@ -49,6 +57,7 @@ const createProduct = {
                           })
                         )
                         .required(),
+                      combineImages: Joi.array().items(Joi.string()).default([]),
                     })
                   )
                   .required(),
@@ -56,7 +65,7 @@ const createProduct = {
             ),
             Joi.string() // Allow JSON string
           )
-          .optional(),
+          .when('hasVariations', { is: true, then: Joi.required(), otherwise: Joi.optional() }),
         combinationImagesData: Joi.alternatives()
           .try(
             Joi.array().items(Joi.object({
@@ -72,147 +81,149 @@ const createProduct = {
       })
       .custom((value, helpers) => {
         if (value.salePrice > value.regularPrice) {
-          return helpers.error(
-            "Sale price cannot be greater than regular price"
-          );
+          return helpers.error("Sale price cannot be greater than regular price");
         }
         return value;
       }),
   },
   handler: async (req, res) => {
-    console.log('Received req.body.combinationImagesData:', req.body.combinationImagesData);
-    console.log("req.body :>> ", req.body);
-    let {
-      categoryName,
-      productName,
-      productsDescription,
-      regularPrice,
-      salePrice,
-      discount,
-      stock,
-      sku,
-      best_selling,
-      gender,
-      hasVariations,
-      variations,
-      combinationImagesData
-    } = req.body;
+    try {
+      console.log('Received request with body:', req.body);
+      console.log('Received files:', Object.keys(req.files || {}));
 
-    hasVariations = String(hasVariations).trim().toLowerCase() === "true";
+      let {
+        categoryName,
+        productName,
+        productsDescription,
+        regularPrice,
+        salePrice,
+        discount,
+        stock,
+        sku,
+        best_selling,
+        gender,
+        hasVariations,
+        variations,
+        combinationImagesData
+      } = req.body;
 
-    if (hasVariations && typeof variations === "string") {
-      variations = JSON.parse(variations);
-    } else {
-      variations = [];
-    }
+      // Convert hasVariations to boolean
+      hasVariations = String(hasVariations).trim().toLowerCase() === "true";
+      console.log('hasVariations:', hasVariations);
 
-    // Parse combinationImagesData if it's a string
-    if (typeof combinationImagesData === "string") {
-      try {
-        combinationImagesData = JSON.parse(combinationImagesData);
-      } catch (error) {
-        console.error("Error parsing combinationImagesData:", error);
-        combinationImagesData = [];
-      }
-    }
-
-    // check if Product already exists
-    const productsNameExits = await Products.findOne({
-      productName: req.body.productName,
-    });
-    const productsskuExits = await Products.findOne({
-      sku: req.body.sku,
-    });
-    if (productsNameExits) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Products already exists");
-    }
-    if (productsskuExits) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "SKU already exists");
-    }
-
-    best_selling = best_selling === "1" ? "1" : "0";
-
-    discount = parseFloat(discount);
-    salePrice = parseFloat(salePrice);
-    regularPrice = parseFloat(regularPrice);
-
-    if (isNaN(req.body.discount)) {
-      req.body.discount = 0;
-    }
-
-    const product = new Products({
-      productName,
-      productsDescription,
-      categoryName,
-      regularPrice,
-      salePrice,
-      discount: discount || 0,
-      stock,
-      review: "",
-      rating: "0",
-      sku,
-      best_selling: best_selling || "0",
-      gender,
-      hasVariations,
-    });
-
-    if (hasVariations && Array.isArray(variations) && variations.length > 0) {
-      // Process images for each metal variation
-      for (const variation of variations) {
-        for (const metalVariation of variation.metalVariations) {
-          const metalKey = metalVariation.metal.replace(/\s+/g, "_");
-          if (req.files && req.files[`images_${metalKey}`]) {
-            const filesArray = Array.isArray(req.files[`images_${metalKey}`])
-              ? req.files[`images_${metalKey}`]
-              : [req.files[`images_${metalKey}`]];
-
-            const imagePaths = [];
-            for (const file of filesArray) {
-              const { upload_path } = await saveFile(file);
-              imagePaths.push(upload_path);
+      // Parse variations if provided
+      if (hasVariations) {
+        if (typeof variations === "string") {
+          try {
+            console.log('Original variations string:', variations);
+            variations = JSON.parse(variations);
+            console.log('Parsed variations:', variations);
+            
+            // Ensure correct structure - should be array of objects with metalVariations
+            if (variations && variations.metalVariations) {
+              variations = [{ metalVariations: variations.metalVariations }];
+            } else if (!Array.isArray(variations)) {
+              throw new Error("Invalid variations format");
             }
-            metalVariation.images = imagePaths;
+          } catch (error) {
+            console.error("Error parsing variations:", error);
+            throw new ApiError(httpStatus.BAD_REQUEST, "Invalid variations data format");
           }
+        } else if (!Array.isArray(variations)) {
+          throw new ApiError(httpStatus.BAD_REQUEST, "Variations must be an array");
+        }
+      } else {
+        variations = [];
+      }
 
-          // Process combination images
-          if (combinationImagesData && Array.isArray(combinationImagesData)) {
-            // Initialize combineImages array if it doesn't exist for any metal variation
-             for (const variation of variations) {
-              for (const metalVariation of variation.metalVariations) {
-                if (!metalVariation.combineImages) {
-                  metalVariation.combineImages = [];
-                }
+      // Parse combinationImagesData if provided
+      if (typeof combinationImagesData === "string") {
+        try {
+          combinationImagesData = JSON.parse(combinationImagesData);
+        } catch (error) {
+          console.error("Error parsing combinationImagesData:", error);
+          combinationImagesData = [];
+        }
+      }
+
+      // Check if product already exists
+      const [productsNameExits, productsskuExits] = await Promise.all([
+        Products.findOne({ productName }),
+        Products.findOne({ sku })
+      ]);
+
+      if (productsNameExits) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Product already exists");
+      }
+      if (productsskuExits) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "SKU already exists");
+      }
+
+      // Convert best_selling to "1" or "0"
+      best_selling = best_selling === "1" ? "1" : "0";
+
+      // Convert numeric fields
+      discount = parseFloat(discount) || 0;
+      salePrice = parseFloat(salePrice);
+      regularPrice = parseFloat(regularPrice);
+
+      // Create new product
+      const product = new Products({
+        productName,
+        productsDescription,
+        categoryName,
+        regularPrice,
+        salePrice,
+        discount,
+        stock,
+        review: "",
+        rating: "0",
+        sku,
+        best_selling,
+        gender,
+        hasVariations,
+      });
+
+      // Process variations if they exist
+      if (hasVariations && Array.isArray(variations)) {
+        // Process images for each metal variation
+        for (const variation of variations) {
+          for (const metalVariation of variation.metalVariations) {
+            const metalKey = metalVariation.metal.replace(/\s+/g, "_");
+            
+            // Process main images
+            if (req.files && req.files[`images_${metalKey}`]) {
+              const filesArray = Array.isArray(req.files[`images_${metalKey}`])
+                ? req.files[`images_${metalKey}`]
+                : [req.files[`images_${metalKey}`]];
+
+              const imagePaths = [];
+              for (const file of filesArray) {
+                const { upload_path } = await saveFile(file);
+                imagePaths.push(upload_path);
               }
+              metalVariation.images = imagePaths;
             }
 
-            // Iterate through each combination data entry from the request body
-            for (const comboData of combinationImagesData) {
-              // Find the matching metal variation
-              const matchingMetalVariation = variations.find(v =>
-                v.metalVariations.some(mv =>
-                  mv.metal === comboData.metal &&
-                  mv.diamondShape.some(ds => ds.name === comboData.diamondShapeName) &&
-                  mv.shank.some(s => s.name === comboData.shankName)
-                )
-              )?.metalVariations.find(mv => // Find the specific metal variation within the found variation doc
-                  mv.metal === comboData.metal &&
-                  mv.diamondShape.some(ds => ds.name === comboData.diamondShapeName) &&
-                  mv.shank.some(s => s.name === comboData.shankName)
-              );
+            // Initialize combineImages array
+            metalVariation.combineImages = [];
 
-              if (matchingMetalVariation && comboData.imageFiles && Array.isArray(comboData.imageFiles)) {
-                // Process all image filenames listed for this combination
-                for (const fileName of comboData.imageFiles) {
-                  // Check if there are uploaded files matching this filename in req.files
-                  if (req.files && req.files[fileName]) {
-                    const filesToSave = Array.isArray(req.files[fileName])
-                      ? req.files[fileName]
-                      : [req.files[fileName]]; // Ensure we always have an array of files
+            // Process combination images if they exist
+            if (Array.isArray(combinationImagesData)) {
+              for (const comboData of combinationImagesData) {
+                if (comboData.metal === metalVariation.metal) {
+                  if (Array.isArray(comboData.imageFiles)) {
+                    for (const fileName of comboData.imageFiles) {
+                      if (req.files && req.files[fileName]) {
+                        const filesToSave = Array.isArray(req.files[fileName])
+                          ? req.files[fileName]
+                          : [req.files[fileName]];
 
-                    // Save each uploaded file and push its path to combineImages
-                    for (const file of filesToSave) {
-                        const { upload_path } = await saveFile(file);
-                        matchingMetalVariation.combineImages.push(upload_path);
+                        for (const file of filesToSave) {
+                          const { upload_path } = await saveFile(file);
+                          metalVariation.combineImages.push(upload_path);
+                        }
+                      }
                     }
                   }
                 }
@@ -220,25 +231,37 @@ const createProduct = {
             }
           }
         }
+
+        // Save variations to database
+        const variationDocs = variations.map((variation) => ({
+          productId: product._id,
+          metalVariations: variation.metalVariations,
+        }));
+
+        const savedVariations = await ProductVariations.insertMany(variationDocs);
+        product.variations = savedVariations.map((variation) => variation._id);
       }
 
-      const variationDocs = variations.map((variation) => ({
-        productId: product._id,
-        metalVariations: variation.metalVariations,
-      }));
-
-      const savedVariations = await ProductVariations.insertMany(variationDocs);
-      product.variations = savedVariations.map((variation) => variation._id);
+      // Save the product
       await product.save();
-    }
 
-    const products = await product.save();
-    const newProduct = await Products.findById(products._id).populate(
-      "variations"
-    );
-    return res.status(httpStatus.CREATED).send(newProduct);
-  },
+      // Return the created product with populated variations
+      const newProduct = await Products.findById(product._id)
+        .populate("variations")
+        .lean();
+
+      return res.status(httpStatus.CREATED).send(newProduct);
+
+    } catch (error) {
+      console.error("Error in create product handler:", error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Product creation failed");
+    }
+  }
 };
+
 
 const getAllProducts = {
   validation: {
