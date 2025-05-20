@@ -14,7 +14,7 @@ const createCategory = {
   handler: async (req, res) => {
     console.log("req.body :>> ", req.body);
 
-    const { categoryName ,subcategories} = req.body;
+    const { categoryName, subcategories } = req.body;
     console.log("req.file", req.files.categoryImage);
     let categoryImage = req.files.categoryImage
       ? await saveFile(req.files.categoryImage)
@@ -80,7 +80,7 @@ const addSubcategory = {
   handler: async (req, res) => {
     const { id } = req.params;
     const { subcategoryName } = req.body;
-   
+
     const category = await Category.findById(id);
     if (!category) {
       throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
@@ -96,14 +96,15 @@ const addSubcategory = {
 
     const newSubcategory = {
       subcategoryName,
-      createdAt: new Date(),  // Explicitly set createdAt field
+      createdAt: new Date(), // Explicitly set createdAt field
     };
 
     category.subcategories.push(newSubcategory);
     await category.save();
 
     // Get the newly added subcategory including the createdAt field
-    const addedSubcategory = category.subcategories[category.subcategories.length - 1];
+    const addedSubcategory =
+      category.subcategories[category.subcategories.length - 1];
 
     return res.status(httpStatus.OK).json({
       success: true,
@@ -114,7 +115,6 @@ const addSubcategory = {
     });
   },
 };
-
 
 const updateSubcategory = {
   handler: async (req, res) => {
@@ -141,9 +141,8 @@ const updateSubcategory = {
       throw new ApiError(httpStatus.BAD_REQUEST, "Subcategory already exists");
     }
 
-
-    subcategory.subcategoryName = subcategoryName || subcategory.subcategoryName;
- 
+    subcategory.subcategoryName =
+      subcategoryName || subcategory.subcategoryName;
 
     await category.save();
 
@@ -154,7 +153,6 @@ const updateSubcategory = {
     });
   },
 };
-
 
 const updateCategory = {
   handler: async (req, res) => {
@@ -240,7 +238,6 @@ const deleteSubcategory = {
   },
 };
 
-
 const deleteCategory = {
   handler: async (req, res) => {
     try {
@@ -276,6 +273,146 @@ const deleteCategory = {
   },
 };
 
+const addStyle = {
+  validation: {
+    body: Joi.object().keys({
+      name: Joi.string().required(), // Style name is required
+      image: Joi.string().optional(), // Style image is optional
+    }),
+  },
+  handler: async (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    // Check if category exists
+    const category = await Category.findById(id);
+    if (!category) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    }
+
+    // Check if style already exists (case-insensitive)
+    const isDuplicate = category.style.some(
+      (style) => style.name.toLowerCase() === name.toLowerCase()
+    );
+    if (isDuplicate) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Style already exists");
+    }
+    let image = req.files.image ? await saveFile(req.files.image) : null;
+    // Create new style object
+    const newStyle = {
+      name,
+      image: image?.upload_path || null, // Set image if provided, otherwise null
+    };
+
+    // Add style to category
+    category.style.push(newStyle);
+    await category.save();
+
+    // Get the newly added style
+    const addedStyle = category.style[category.style.length - 1];
+
+    return res.status(httpStatus.OK).json({
+      success: true,
+      message: "Style added successfully",
+      data: {
+        style: addedStyle, // Return the full style object
+      },
+    });
+  },
+};
+
+const updateStyle = {
+  handler: async (req, res) => {
+    const { id, styleId } = req.params;
+    const { name } = req.body;
+
+    // Find category
+    const category = await Category.findById(id);
+    if (!category) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    }
+
+    // Find style by ID
+    const style = category.style.id(styleId);
+    if (!style) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Style not found");
+    }
+
+    // Check for duplicate style name (case-insensitive), excluding current style
+    const isDuplicate = category.style.some(
+      (s) =>
+        s._id.toString() !== styleId &&
+        s.name.toLowerCase() === name.toLowerCase()
+    );
+    if (isDuplicate) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Style with this name already exists");
+    }
+
+    // Handle image upload
+    let image = req.files?.image ? await saveFile(req.files.image) : null;
+
+    // Remove old image if new one uploaded
+    if (image && style.image) {
+      await removeFile(style.image);
+    }
+
+    // Update style fields
+    style.name = name || style.name;
+    style.image = image?.upload_path || style.image;
+
+    await category.save();
+
+    return res.status(httpStatus.OK).json({
+      success: true,
+      message: "Style updated successfully",
+      data: style,
+    });
+  },
+};
+
+const getStyle = {
+  handler: async (req, res) => {
+    const { id } = req.params;
+
+    const category = await Category.findById(id);
+    if (!category) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    }
+
+    return res.status(httpStatus.OK).json({
+      success: true,
+      subcategories: category.style || [],
+    });
+  },
+}
+
+const deleteStyle = {
+  handler: async (req, res) => {
+    const { id, styleId } = req.params;
+
+    const category = await Category.findById(id);
+    if (!category) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    }
+    const styleIndex = category.style.findIndex(
+      (style) => style._id.toString() === styleId
+    );
+
+    if (styleIndex === -1) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Style not found");
+    }
+
+    category.style.splice(styleIndex, 1);
+    await category.save();
+
+
+    return res.status(httpStatus.OK).json({
+      success: true,
+      message: "Style deleted successfully",
+    });
+  },
+};
+
 module.exports = {
   createCategory,
   getCategory,
@@ -284,6 +421,9 @@ module.exports = {
   addSubcategory,
   getSubcategories,
   deleteSubcategory,
-  updateSubcategory
-
+  updateSubcategory,
+  addStyle,
+  updateStyle,
+  getStyle,
+  deleteStyle
 };

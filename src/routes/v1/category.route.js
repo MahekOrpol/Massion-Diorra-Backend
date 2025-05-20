@@ -45,4 +45,18 @@ router.delete(
   catchAsync(categoryController.deleteSubcategory.handler)
 );
 
+router.post("/create/style/:id", catchAsync(categoryController.addStyle.handler));
+
+router.put("/:id/update/style/:styleId", catchAsync(categoryController.updateStyle.handler));
+
+router.get(
+  "/get/style/:id",
+  catchAsync(categoryController.getStyle.handler)
+);
+
+router.delete(
+  "/:id/delete/style/:styleId",
+  catchAsync(categoryController.deleteStyle.handler)
+);
+
 module.exports = router;
