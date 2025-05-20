@@ -34,6 +34,7 @@ const metalVariationSchema = new mongoose.Schema({
   combinationImages: [{
     diamondShape: String,
     shank: String,
+    style:String,
     images: [String]
   }],
   review: {

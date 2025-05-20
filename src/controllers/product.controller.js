@@ -83,6 +83,7 @@ const createProduct = {
               Joi.object({
                 metal: Joi.string().required(),
                 diamondShape: Joi.string().required(),
+                style: Joi.string().required(),
                 shank: Joi.string().required(),
                 imageKeys: Joi.array().items(Joi.string()).required(),
               })
@@ -153,12 +154,24 @@ const createProduct = {
       if (typeof combinationData === "string") {
         try {
           combinationData = JSON.parse(combinationData);
+          if (!Array.isArray(combinationData)) {
+            combinationData = []; // Ensure it's an array
+          }
         } catch (error) {
+          console.error("Error parsing combinationData:", error);
           combinationData = [];
         }
+      } else if (!Array.isArray(combinationData)) {
+        combinationData = [];
       }
 
-      // Check if product already exists
+      console.log(
+        "Combination data:",
+        JSON.stringify(combinationData, null, 2)
+      );
+      console.log("Files in request:", Object.keys(req.files));
+
+      // Rest of your product creation logic...
       const [productsNameExits, productsskuExits] = await Promise.all([
         Products.findOne({ productName }),
         Products.findOne({ sku }),
@@ -171,7 +184,6 @@ const createProduct = {
         throw new ApiError(httpStatus.BAD_REQUEST, "SKU already exists");
       }
 
-      // Create new product
       const product = new Products({
         productName,
         productsDescription,
@@ -188,9 +200,7 @@ const createProduct = {
         hasVariations,
       });
 
-      // Process variations if they exist
       if (hasVariations && Array.isArray(variations)) {
-        // Process images for each metal variation
         for (const variation of variations) {
           for (const metalVariation of variation.metalVariations) {
             const metalKey = metalVariation.metal.replace(/\s+/g, "_");
@@ -209,25 +219,31 @@ const createProduct = {
               metalVariation.images = imagePaths;
             }
 
-            // Initialize combinationImages array
             metalVariation.combinationImages = [];
 
-            // Process combination images if they exist
-            if (Array.isArray(combinationData)) {
+            if (Array.isArray(combinationData) && combinationData.length > 0) {
               for (const combo of combinationData) {
                 if (combo.metal === metalVariation.metal) {
-                  // Find matching diamond shape and shank
-                  const diamondShapeExists = metalVariation.diamondShape.some(
+                  const diamondShapeExists = metalVariation.diamondShape && metalVariation.diamondShape.some(
                     (ds) => ds.name === combo.diamondShape
                   );
-                  const shankExists = metalVariation.shank.some(
+                  const shankExists = metalVariation.shank && metalVariation.shank.some(
                     (s) => s.name === combo.shank
                   );
+                  const styleExists = metalVariation.style && metalVariation.style.some(
+                    (s) => s.name === combo.style
+                  );
 
-                  if (diamondShapeExists && shankExists) {
+                  console.log(
+                    `Checking combo: metal=${combo.metal}, shape=${combo.diamondShape}, shank=${combo.shank}, style=${combo.style}`
+                  );
+                  console.log(
+                    `Exists: diamond=${diamondShapeExists}, shank=${shankExists}, style=${styleExists}`
+                  );
+
+                  if (diamondShapeExists && shankExists && styleExists) {
                     const comboImages = [];
 
-                    // Process each image key for this combination
                     for (const imageKey of combo.imageKeys) {
                       if (req.files && req.files[imageKey]) {
                         const filesToSave = Array.isArray(req.files[imageKey])
@@ -235,19 +251,26 @@ const createProduct = {
                           : [req.files[imageKey]];
 
                         for (const file of filesToSave) {
-                          const { upload_path } = await saveFile(file);
-                          comboImages.push(upload_path);
+                          try {
+                            const { upload_path } = await saveFile(file);
+                            comboImages.push(upload_path);
+                          } catch (error) {
+                            console.error(
+                              `Error saving file ${imageKey}:`,
+                              error
+                            );
+                          }
                         }
+                      } else {
+                        console.log(`File ${imageKey} not found in request`);
                       }
                     }
 
-                    // Add to combinationImages array
                     if (comboImages.length > 0) {
-                      metalVariation.combinationImages =
-                        metalVariation.combinationImages || [];
                       metalVariation.combinationImages.push({
                         diamondShape: combo.diamondShape,
                         shank: combo.shank,
+                        style: combo.style,
                         images: comboImages,
                       });
                     }
@@ -258,7 +281,6 @@ const createProduct = {
           }
         }
 
-        // Save variations to database
         const variationDocs = variations.map((variation) => ({
           productId: product._id,
           metalVariations: variation.metalVariations,
@@ -270,10 +292,8 @@ const createProduct = {
         product.variations = savedVariations.map((variation) => variation._id);
       }
 
-      // Save the product
       await product.save();
 
-      // Return the created product with populated variations
       const newProduct = await Products.findById(product._id)
         .populate({
           path: "variations",
@@ -309,6 +329,7 @@ const getAllProducts = {
       best_selling: Joi.string(),
       hasVariations: Joi.boolean(),
       diamondShape: Joi.string(),
+      style: Joi.string(), // Add this line to allow style filtering
     }),
   },
   handler: async (req, res) => {
@@ -357,6 +378,10 @@ const getAllProducts = {
         ? req.query.diamondShape.split(",").map((d) => d.trim())
         : [];
 
+      const styleArray = req.query?.style
+        ? req.query.style.split(",").map((d) => d.trim())
+        : [];
+
       // Fetch products with populated variations and matched metalVariations
       const products = await Products.find(filter)
         .populate({
@@ -364,13 +389,16 @@ const getAllProducts = {
           populate: {
             path: "metalVariations",
             match:
-              metalArray.length > 0 || diamondArray.length > 0
+              metalArray.length > 0 || diamondArray.length > 0 || styleArray.length > 0
                 ? {
                     ...(metalArray.length > 0 && {
                       metal: { $in: metalArray },
                     }),
                     ...(diamondArray.length > 0 && {
                       "diamondShape.name": { $in: diamondArray },
+                    }),
+                    ...(styleArray.length > 0 && {
+                      "style.name": { $in: styleArray },
                     }),
                   }
                 : {},
@@ -381,7 +409,7 @@ const getAllProducts = {
       // Filter out products with no matching metal variations if metal filter applied
       let filteredProducts = products;
 
-      if (metalArray.length > 0 || diamondArray.length > 0) {
+      if (metalArray.length > 0 || diamondArray.length > 0 || styleArray.length > 0) {
         filteredProducts = products
           .map((product) => {
             // Keep only variations that have matching metalVariations
@@ -397,18 +425,32 @@ const getAllProducts = {
                     (mv.diamondShape || []).some((ds) =>
                       diamondArray.includes(ds.name)
                     );
-                  return metalMatch && diamondMatch;
+                  const styleMatch =
+                    styleArray.length === 0 ||
+                    (mv.style || []).some((s) =>
+                      styleArray.includes(s.name)
+                    );
+                  return metalMatch && diamondMatch && styleMatch;
                 });
 
-                // Filter combinationImages if diamondShape is provided
+                // Filter combinationImages if diamondShape or style is provided
                 const metalVariationsWithFilteredCombinations =
                   matchingMetalVariations.map((mv) => {
-                    if (diamondArray.length > 0 && mv.combinationImages) {
+                    if (mv.combinationImages) {
+                      let filteredImages = mv.combinationImages;
+                      if (diamondArray.length > 0) {
+                        filteredImages = filteredImages.filter((ci) =>
+                          diamondArray.includes(ci.diamondShape)
+                        );
+                      }
+                      if (styleArray.length > 0) {
+                        filteredImages = filteredImages.filter((ci) =>
+                          styleArray.includes(ci.style)
+                        );
+                      }
                       return {
                         ...mv,
-                        combinationImages: mv.combinationImages.filter((ci) =>
-                          diamondArray.includes(ci.diamondShape)
-                        ),
+                        combinationImages: filteredImages,
                       };
                     }
                     return mv;
@@ -425,10 +467,18 @@ const getAllProducts = {
 
             // Filter product-level combinationImages if they exist
             let filteredCombinationImages = [];
-            if (product.combinationImages && diamondArray.length > 0) {
-              filteredCombinationImages = product.combinationImages.filter(
-                (ci) => diamondArray.includes(ci.diamondShape)
-              );
+            if (product.combinationImages) {
+              filteredCombinationImages = product.combinationImages;
+              if (diamondArray.length > 0) {
+                filteredCombinationImages = filteredCombinationImages.filter((ci) =>
+                  diamondArray.includes(ci.diamondShape)
+                );
+              }
+              if (styleArray.length > 0) {
+                filteredCombinationImages = filteredCombinationImages.filter((ci) =>
+                  styleArray.includes(ci.style)
+                );
+              }
             }
 
             // Only include product if it has at least one valid variation
@@ -436,7 +486,7 @@ const getAllProducts = {
               return {
                 ...product,
                 variations: filteredVariations,
-                ...(diamondArray.length > 0 && {
+                ...((diamondArray.length > 0 || styleArray.length > 0) && {
                   combinationImages: filteredCombinationImages,
                 }),
               };
@@ -1050,7 +1100,7 @@ const getProductById = {
   handler: async (req, res) => {
     try {
       const { id } = req.params;
-      const { metal, metalVariationId, diamondShape, shank } = req.query;
+      const { metal, metalVariationId, diamondShape, shank ,style} = req.query;
 
       const product = await Products.findById(id)
         .populate({
@@ -1108,7 +1158,8 @@ const getProductById = {
                       const shapeMatch =
                         !diamondShape || ci.diamondShape === diamondShape;
                       const shankMatch = !shank || ci.shank === shank;
-                      return shapeMatch && shankMatch;
+                      const styleMatch = !style || ci.style === style;
+                      return shapeMatch && shankMatch && styleMatch;
                     }
                   );
                 }
