@@ -92,21 +92,36 @@ const getWishlist = catchAsync(async (req, res) => {
     })
     .lean();
 
+  // Filter out any items where product is null or deleted
+  const validWishlistItems = wishlistItems.filter(item => item.productId !== null);
+
   // Enhance wishlist items with product details
-  const enhancedWishlist = wishlistItems.map(item => {
+  const enhancedWishlist = validWishlistItems.map(item => {
     const product = item.productId;
     let thumbnail = null;
     let allImages = [];
+    let price = item.price || product.salePrice;
 
-    // Find the selected metal variation's images
-    if (product.variations) {
+    // Find the selected metal variation's images and price
+    if (product.variations && product.variations.length > 0) {
       for (const variation of product.variations) {
-        if (variation.metalVariations) {
+        if (variation.metalVariations && variation.metalVariations.length > 0) {
           for (const mv of variation.metalVariations) {
             if (mv.metal === item.selectedMetal) {
+              // Get images
               if (mv.images && mv.images.length > 0) {
                 thumbnail = mv.images[0];
                 allImages = mv.images;
+              }
+
+              // Get price from ring size if available
+              if (item.selectedSize && mv.ringSizes) {
+                const selectedSize = mv.ringSizes.find(
+                  size => size.productSize === item.selectedSize
+                );
+                if (selectedSize) {
+                  price = selectedSize.salePrice || price;
+                }
               }
               break;
             }
@@ -124,7 +139,7 @@ const getWishlist = catchAsync(async (req, res) => {
       selectedSize: item.selectedSize,
       selectedDiamondShape: item.selectedDiamondShape,
       selectedShank: item.selectedShank,
-      price: item.price,
+      price,
       product: {
         _id: product._id,
         productName: product.productName,
