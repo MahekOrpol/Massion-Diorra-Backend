@@ -13,6 +13,11 @@ const diamondShapeSchema = new mongoose.Schema({
   image: { type: String, required: true },
 });
 
+const styleSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  image: { type: String, required: true },
+});
+
 const shankSchema = new mongoose.Schema({
   name: { type: String, required: true },
   image: { type: String, required: true },
@@ -23,6 +28,7 @@ const metalVariationSchema = new mongoose.Schema({
   quantity: { type: String, required: true },
   images: { type: [String], default: [] },
   diamondShape: [diamondShapeSchema],
+  style: [styleSchema],
   shank: [shankSchema],
   ringSizes: [ringSizeSchema],
   combinationImages: [{

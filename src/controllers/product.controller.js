@@ -39,6 +39,14 @@ const createProduct = {
                           })
                         )
                         .required(),
+                      style: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
                       shank: Joi.array()
                         .items(
                           Joi.object({
@@ -64,7 +72,11 @@ const createProduct = {
             ),
             Joi.string()
           )
-          .when('hasVariations', { is: true, then: Joi.required(), otherwise: Joi.optional() }),
+          .when("hasVariations", {
+            is: true,
+            then: Joi.required(),
+            otherwise: Joi.optional(),
+          }),
         combinationData: Joi.alternatives()
           .try(
             Joi.array().items(
@@ -72,7 +84,7 @@ const createProduct = {
                 metal: Joi.string().required(),
                 diamondShape: Joi.string().required(),
                 shank: Joi.string().required(),
-                imageKeys: Joi.array().items(Joi.string()).required()
+                imageKeys: Joi.array().items(Joi.string()).required(),
               })
             ),
             Joi.string()
@@ -82,7 +94,9 @@ const createProduct = {
       })
       .custom((value, helpers) => {
         if (value.salePrice > value.regularPrice) {
-          return helpers.error("Sale price cannot be greater than regular price");
+          return helpers.error(
+            "Sale price cannot be greater than regular price"
+          );
         }
         return value;
       }),
@@ -103,7 +117,7 @@ const createProduct = {
         gender,
         hasVariations,
         variations,
-        combinationData
+        combinationData,
       } = req.body;
 
       // Convert hasVariations to boolean
@@ -120,10 +134,16 @@ const createProduct = {
               throw new Error("Invalid variations format");
             }
           } catch (error) {
-            throw new ApiError(httpStatus.BAD_REQUEST, "Invalid variations data format");
+            throw new ApiError(
+              httpStatus.BAD_REQUEST,
+              "Invalid variations data format"
+            );
           }
         } else if (!Array.isArray(variations)) {
-          throw new ApiError(httpStatus.BAD_REQUEST, "Variations must be an array");
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            "Variations must be an array"
+          );
         }
       } else {
         variations = [];
@@ -141,7 +161,7 @@ const createProduct = {
       // Check if product already exists
       const [productsNameExits, productsskuExits] = await Promise.all([
         Products.findOne({ productName }),
-        Products.findOne({ sku })
+        Products.findOne({ sku }),
       ]);
 
       if (productsNameExits) {
@@ -174,7 +194,7 @@ const createProduct = {
         for (const variation of variations) {
           for (const metalVariation of variation.metalVariations) {
             const metalKey = metalVariation.metal.replace(/\s+/g, "_");
-            
+
             // Process main images
             if (req.files && req.files[`images_${metalKey}`]) {
               const filesArray = Array.isArray(req.files[`images_${metalKey}`])
@@ -198,15 +218,15 @@ const createProduct = {
                 if (combo.metal === metalVariation.metal) {
                   // Find matching diamond shape and shank
                   const diamondShapeExists = metalVariation.diamondShape.some(
-                    ds => ds.name === combo.diamondShape
+                    (ds) => ds.name === combo.diamondShape
                   );
                   const shankExists = metalVariation.shank.some(
-                    s => s.name === combo.shank
+                    (s) => s.name === combo.shank
                   );
 
                   if (diamondShapeExists && shankExists) {
                     const comboImages = [];
-                    
+
                     // Process each image key for this combination
                     for (const imageKey of combo.imageKeys) {
                       if (req.files && req.files[imageKey]) {
@@ -223,11 +243,12 @@ const createProduct = {
 
                     // Add to combinationImages array
                     if (comboImages.length > 0) {
-                      metalVariation.combinationImages = metalVariation.combinationImages || [];
+                      metalVariation.combinationImages =
+                        metalVariation.combinationImages || [];
                       metalVariation.combinationImages.push({
                         diamondShape: combo.diamondShape,
                         shank: combo.shank,
-                        images: comboImages
+                        images: comboImages,
                       });
                     }
                   }
@@ -243,7 +264,9 @@ const createProduct = {
           metalVariations: variation.metalVariations,
         }));
 
-        const savedVariations = await ProductVariations.insertMany(variationDocs);
+        const savedVariations = await ProductVariations.insertMany(
+          variationDocs
+        );
         product.variations = savedVariations.map((variation) => variation._id);
       }
 
@@ -255,21 +278,23 @@ const createProduct = {
         .populate({
           path: "variations",
           populate: {
-            path: "metalVariations"
-          }
+            path: "metalVariations",
+          },
         })
         .lean();
 
       return res.status(httpStatus.CREATED).send(newProduct);
-
     } catch (error) {
       console.error("Error in create product handler:", error);
       if (error instanceof ApiError) {
         throw error;
       }
-      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Product creation failed");
+      throw new ApiError(
+        httpStatus.INTERNAL_SERVER_ERROR,
+        "Product creation failed"
+      );
     }
-  }
+  },
 };
 
 const getAllProducts = {
@@ -341,7 +366,9 @@ const getAllProducts = {
             match:
               metalArray.length > 0 || diamondArray.length > 0
                 ? {
-                    ...(metalArray.length > 0 && { metal: { $in: metalArray } }),
+                    ...(metalArray.length > 0 && {
+                      metal: { $in: metalArray },
+                    }),
                     ...(diamondArray.length > 0 && {
                       "diamondShape.name": { $in: diamondArray },
                     }),
@@ -364,8 +391,7 @@ const getAllProducts = {
                   variation.metalVariations || []
                 ).filter((mv) => {
                   const metalMatch =
-                    metalArray.length === 0 ||
-                    metalArray.includes(mv.metal);
+                    metalArray.length === 0 || metalArray.includes(mv.metal);
                   const diamondMatch =
                     diamondArray.length === 0 ||
                     (mv.diamondShape || []).some((ds) =>
@@ -375,18 +401,18 @@ const getAllProducts = {
                 });
 
                 // Filter combinationImages if diamondShape is provided
-                const metalVariationsWithFilteredCombinations = matchingMetalVariations.map(
-                  (mv) => {
+                const metalVariationsWithFilteredCombinations =
+                  matchingMetalVariations.map((mv) => {
                     if (diamondArray.length > 0 && mv.combinationImages) {
                       return {
                         ...mv,
                         combinationImages: mv.combinationImages.filter((ci) =>
                           diamondArray.includes(ci.diamondShape)
-                )}   
+                        ),
+                      };
                     }
                     return mv;
-                  }
-                );
+                  });
 
                 return metalVariationsWithFilteredCombinations.length > 0
                   ? {
@@ -400,8 +426,8 @@ const getAllProducts = {
             // Filter product-level combinationImages if they exist
             let filteredCombinationImages = [];
             if (product.combinationImages && diamondArray.length > 0) {
-              filteredCombinationImages = product.combinationImages.filter((ci) =>
-                diamondArray.includes(ci.diamondShape)
+              filteredCombinationImages = product.combinationImages.filter(
+                (ci) => diamondArray.includes(ci.diamondShape)
               );
             }
 
@@ -419,7 +445,6 @@ const getAllProducts = {
           })
           .filter(Boolean);
       }
-          
 
       // Enhance response
       const enhancedProducts = filteredProducts.map((product) => {
@@ -448,8 +473,8 @@ const getAllProducts = {
         }, []);
 
         const allPrices = validVariations.flatMap((variation) =>
-          variation.metalVariations.flatMap((mv) =>
-            mv.ringSizes?.map((rs) => parseFloat(rs.salePrice)) || []
+          variation.metalVariations.flatMap(
+            (mv) => mv.ringSizes?.map((rs) => parseFloat(rs.salePrice)) || []
           )
         );
 
@@ -1041,7 +1066,7 @@ const getProductById = {
       }
 
       // if (metal || metalVariationId || diamondShape || shank) {
-      if (metal || metalVariationId ) {
+      if (metal || metalVariationId) {
         product.variations = product.variations
           .map((variation) => {
             variation.metalVariations = variation.metalVariations
@@ -1078,11 +1103,14 @@ const getProductById = {
                 // Filter combinationImages based on the combination
                 let filteredCombinationImages = [];
                 if (mv.combinationImages && mv.combinationImages.length > 0) {
-                  filteredCombinationImages = mv.combinationImages.filter((ci) => {
-                    const shapeMatch = !diamondShape || ci.diamondShape === diamondShape;
-                    const shankMatch = !shank || ci.shank === shank;
-                    return shapeMatch && shankMatch;
-                  });
+                  filteredCombinationImages = mv.combinationImages.filter(
+                    (ci) => {
+                      const shapeMatch =
+                        !diamondShape || ci.diamondShape === diamondShape;
+                      const shankMatch = !shank || ci.shank === shank;
+                      return shapeMatch && shankMatch;
+                    }
+                  );
                 }
 
                 return {
@@ -1091,7 +1119,7 @@ const getProductById = {
                   // shank: matchedShanks,
                   combinationImages: filteredCombinationImages,
                   // Keep combineImages for backward compatibility
-                  combineImages: mv.combineImages || []
+                  combineImages: mv.combineImages || [],
                 };
               })
               .filter(Boolean); // Remove nulls
@@ -1142,7 +1170,7 @@ const getProductById = {
             shank: mv.shank,
             ringSizes: mv.ringSizes,
             combinationImages: mv.combinationImages,
-            combineImages: mv.combineImages
+            combineImages: mv.combineImages,
           };
         });
       });
