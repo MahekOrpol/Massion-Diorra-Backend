@@ -1041,23 +1041,23 @@ const getProductById = {
                 //   return null;
                 // }
 
-    
-                let filteredCombineImages = [];
-                if (mv.combineImages && mv.combineImages.length > 0) {
-                  if (metal && diamondShape && shank) {
-                
-                    filteredCombineImages = mv.combineImages;
-
-                  } else {
-                    filteredCombineImages = mv.combineImages;
-                  }
+                // Filter combinationImages based on the combination
+                let filteredCombinationImages = [];
+                if (mv.combinationImages && mv.combinationImages.length > 0) {
+                  filteredCombinationImages = mv.combinationImages.filter((ci) => {
+                    const shapeMatch = !diamondShape || ci.diamondShape === diamondShape;
+                    const shankMatch = !shank || ci.shank === shank;
+                    return shapeMatch && shankMatch;
+                  });
                 }
 
                 return {
                   ...mv,
                   // diamondShape: matchedDiamondShapes,
                   // shank: matchedShanks,
-                  combineImages: filteredCombineImages
+                  combinationImages: filteredCombinationImages,
+                  // Keep combineImages for backward compatibility
+                  combineImages: mv.combineImages || []
                 };
               })
               .filter(Boolean); // Remove nulls
@@ -1107,6 +1107,7 @@ const getProductById = {
             diamondShape: mv.diamondShape,
             shank: mv.shank,
             ringSizes: mv.ringSizes,
+            combinationImages: mv.combinationImages,
             combineImages: mv.combineImages
           };
         });
