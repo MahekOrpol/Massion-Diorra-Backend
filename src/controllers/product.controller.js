@@ -57,24 +57,25 @@ const createProduct = {
                           })
                         )
                         .required(),
-                      combineImages: Joi.array().items(Joi.string()).default([]),
                     })
                   )
                   .required(),
               })
             ),
-            Joi.string() // Allow JSON string
+            Joi.string()
           )
           .when('hasVariations', { is: true, then: Joi.required(), otherwise: Joi.optional() }),
-        combinationImagesData: Joi.alternatives()
+        combinationData: Joi.alternatives()
           .try(
-            Joi.array().items(Joi.object({
-              metal: Joi.string().required(),
-              diamondShapeName: Joi.string().required(),
-              shankName: Joi.string().required(),
-              imageFiles: Joi.array().items(Joi.string()).required()
-            })),
-            Joi.string() // Allow JSON string
+            Joi.array().items(
+              Joi.object({
+                metal: Joi.string().required(),
+                diamondShape: Joi.string().required(),
+                shank: Joi.string().required(),
+                imageKeys: Joi.array().items(Joi.string()).required()
+              })
+            ),
+            Joi.string()
           )
           .optional()
           .default([]),
@@ -86,11 +87,9 @@ const createProduct = {
         return value;
       }),
   },
+
   handler: async (req, res) => {
     try {
-      console.log('Received request with body:', req.body);
-      console.log('Received files:', Object.keys(req.files || {}));
-
       let {
         categoryName,
         productName,
@@ -104,29 +103,23 @@ const createProduct = {
         gender,
         hasVariations,
         variations,
-        combinationImagesData
+        combinationData
       } = req.body;
 
       // Convert hasVariations to boolean
       hasVariations = String(hasVariations).trim().toLowerCase() === "true";
-      console.log('hasVariations:', hasVariations);
 
       // Parse variations if provided
       if (hasVariations) {
         if (typeof variations === "string") {
           try {
-            console.log('Original variations string:', variations);
             variations = JSON.parse(variations);
-            console.log('Parsed variations:', variations);
-            
-            // Ensure correct structure - should be array of objects with metalVariations
             if (variations && variations.metalVariations) {
               variations = [{ metalVariations: variations.metalVariations }];
             } else if (!Array.isArray(variations)) {
               throw new Error("Invalid variations format");
             }
           } catch (error) {
-            console.error("Error parsing variations:", error);
             throw new ApiError(httpStatus.BAD_REQUEST, "Invalid variations data format");
           }
         } else if (!Array.isArray(variations)) {
@@ -136,13 +129,12 @@ const createProduct = {
         variations = [];
       }
 
-      // Parse combinationImagesData if provided
-      if (typeof combinationImagesData === "string") {
+      // Parse combinationData if provided
+      if (typeof combinationData === "string") {
         try {
-          combinationImagesData = JSON.parse(combinationImagesData);
+          combinationData = JSON.parse(combinationData);
         } catch (error) {
-          console.error("Error parsing combinationImagesData:", error);
-          combinationImagesData = [];
+          combinationData = [];
         }
       }
 
@@ -158,14 +150,6 @@ const createProduct = {
       if (productsskuExits) {
         throw new ApiError(httpStatus.BAD_REQUEST, "SKU already exists");
       }
-
-      // Convert best_selling to "1" or "0"
-      best_selling = best_selling === "1" ? "1" : "0";
-
-      // Convert numeric fields
-      discount = parseFloat(discount) || 0;
-      salePrice = parseFloat(salePrice);
-      regularPrice = parseFloat(regularPrice);
 
       // Create new product
       const product = new Products({
@@ -205,25 +189,46 @@ const createProduct = {
               metalVariation.images = imagePaths;
             }
 
-            // Initialize combineImages array
-            metalVariation.combineImages = [];
+            // Initialize combinationImages array
+            metalVariation.combinationImages = [];
 
             // Process combination images if they exist
-            if (Array.isArray(combinationImagesData)) {
-              for (const comboData of combinationImagesData) {
-                if (comboData.metal === metalVariation.metal) {
-                  if (Array.isArray(comboData.imageFiles)) {
-                    for (const fileName of comboData.imageFiles) {
-                      if (req.files && req.files[fileName]) {
-                        const filesToSave = Array.isArray(req.files[fileName])
-                          ? req.files[fileName]
-                          : [req.files[fileName]];
+            if (Array.isArray(combinationData)) {
+              for (const combo of combinationData) {
+                if (combo.metal === metalVariation.metal) {
+                  // Find matching diamond shape and shank
+                  const diamondShapeExists = metalVariation.diamondShape.some(
+                    ds => ds.name === combo.diamondShape
+                  );
+                  const shankExists = metalVariation.shank.some(
+                    s => s.name === combo.shank
+                  );
+
+                  if (diamondShapeExists && shankExists) {
+                    const comboImages = [];
+                    
+                    // Process each image key for this combination
+                    for (const imageKey of combo.imageKeys) {
+                      if (req.files && req.files[imageKey]) {
+                        const filesToSave = Array.isArray(req.files[imageKey])
+                          ? req.files[imageKey]
+                          : [req.files[imageKey]];
 
                         for (const file of filesToSave) {
                           const { upload_path } = await saveFile(file);
-                          metalVariation.combineImages.push(upload_path);
+                          comboImages.push(upload_path);
                         }
                       }
+                    }
+
+                    // Add to combinationImages array
+                    if (comboImages.length > 0) {
+                      metalVariation.combinationImages = metalVariation.combinationImages || [];
+                      metalVariation.combinationImages.push({
+                        diamondShape: combo.diamondShape,
+                        shank: combo.shank,
+                        images: comboImages
+                      });
                     }
                   }
                 }
@@ -247,7 +252,12 @@ const createProduct = {
 
       // Return the created product with populated variations
       const newProduct = await Products.findById(product._id)
-        .populate("variations")
+        .populate({
+          path: "variations",
+          populate: {
+            path: "metalVariations"
+          }
+        })
         .lean();
 
       return res.status(httpStatus.CREATED).send(newProduct);
@@ -996,8 +1006,8 @@ const getProductById = {
         throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
       }
 
-      // Filter variations if metal or metalVariationId is provided
       if (metal || metalVariationId || diamondShape || shank) {
+      // if (metal || metalVariationId ) {
         product.variations = product.variations
           .map((variation) => {
             variation.metalVariations = variation.metalVariations
@@ -1011,51 +1021,42 @@ const getProductById = {
                 }
 
                 // Match diamondShape from array
-                const matchedDiamondShapes = diamondShape
-                  ? mv.diamondShape?.filter((ds) => ds.name === diamondShape)
-                  : mv.diamondShape;
+                // const matchedDiamondShapes = diamondShape
+                //   ? mv.diamondShape?.filter((ds) => ds.name === diamondShape)
+                //   : mv.diamondShape;
 
-                if (
-                  diamondShape &&
-                  (!matchedDiamondShapes || matchedDiamondShapes.length === 0)
-                ) {
-                  return null;
-                }
+                // if (
+                //   diamondShape &&
+                //   (!matchedDiamondShapes || matchedDiamondShapes.length === 0)
+                // ) {
+                //   return null;
+                // }
 
-                // Match shank from array
-                const matchedShanks = shank
-                  ? mv.shank?.filter((s) => s.name === shank)
-                  : mv.shank;
+                // // Match shank from array
+                // const matchedShanks = shank
+                //   ? mv.shank?.filter((s) => s.name === shank)
+                //   : mv.shank;
 
-                if (shank && (!matchedShanks || matchedShanks.length === 0)) {
-                  return null;
-                }
+                // if (shank && (!matchedShanks || matchedShanks.length === 0)) {
+                //   return null;
+                // }
 
-                // Filter combineImages based on the combination
+    
                 let filteredCombineImages = [];
                 if (mv.combineImages && mv.combineImages.length > 0) {
-                  // If all three parameters are provided, return all matching combination images
                   if (metal && diamondShape && shank) {
-                    // With the current flat structure of combineImages, accurately filtering
-                    // by diamond shape and shank when there are varying numbers of images
-                    // per combination is not reliably possible without additional data
-                    // stored alongside the image paths. Returning all images for the metal
-                    // variation if metal, diamondShape, and shank are all provided.
-                    // A more robust solution would involve changing the schema to store
-                    // combination info with each image or group of images.
+                
                     filteredCombineImages = mv.combineImages;
 
                   } else {
-                    // If not all parameters are provided, return all combination images for this metal variation
                     filteredCombineImages = mv.combineImages;
                   }
                 }
 
-                // Return filtered metal variation
                 return {
                   ...mv,
-                  diamondShape: matchedDiamondShapes,
-                  shank: matchedShanks,
+                  // diamondShape: matchedDiamondShapes,
+                  // shank: matchedShanks,
                   combineImages: filteredCombineImages
                 };
               })

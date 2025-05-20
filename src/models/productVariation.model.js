@@ -25,7 +25,11 @@ const metalVariationSchema = new mongoose.Schema({
   diamondShape: [diamondShapeSchema],
   shank: [shankSchema],
   ringSizes: [ringSizeSchema],
-  combineImages: { type: [String], default: [] },
+  combinationImages: [{
+    diamondShape: String,
+    shank: String,
+    images: [String]
+  }],
   review: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Review",
