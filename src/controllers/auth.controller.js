@@ -35,40 +35,30 @@ const sendOtp = {
     const { email } = req.body;
     console.log("sendOtp request received for email:", email);
 
-    // Check if email is already registered in User model
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      console.error("sendOtp failed: Email already registered", { email });
-      throw new ApiError(httpStatus.BAD_REQUEST, "Email already registered");
-    }
-
-    // Check if email exists in Register model
-    let user = await Register.findOne({ email });
+    // ✅ Only send OTP if email exists in Register model
+    const user = await Register.findOne({ email });
     if (!user) {
-      // Create new entry in Register model
-      user = await new Register({ email }).save();
-      console.log("Created new Register entry for:", email);
+      console.error("sendOtp failed: Email not registered", { email });
+      throw new ApiError(httpStatus.NOT_FOUND, "User not found");
     }
 
-    // Generate 6-digit OTP
+    // ✅ Generate 6-digit OTP
     const randomOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Update user with OTP and expiry
+    // ✅ Update user with OTP and expiry
     user.generateOTP = randomOTP;
     user.otpExpiresAt = otpExpiresAt;
     user.updatedAt = new Date();
-    user.failedAttempts = 0; // Reset failed attempts on new OTP generation
+    user.failedAttempts = 0;
     await user.save();
 
     console.log("Generated OTP:", randomOTP, "for user:", {
       _id: user._id,
       email: user.email,
-      otpExpiresAt: user.otpExpiresAt,
-      generateOTP: user.generateOTP,
     });
 
-    // Send OTP via email
+    // ✅ Send OTP via email
     try {
       await emailService.sendOtpOnEmail(email, randomOTP);
     } catch (error) {
@@ -86,6 +76,7 @@ const sendOtp = {
     });
   }),
 };
+
 
 const verifyOTP = {
   validation: {
