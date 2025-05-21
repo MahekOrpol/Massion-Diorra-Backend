@@ -37,10 +37,11 @@ mongoose.connect(config.mongoose.url, config.mongoose.options).then(() => {
             socket.emit('pong-server', { msg: 'Pong from server!' });
         });
     });
-
-    server.listen(config.port, () => {
+    
+    server.listen(config.port, '0.0.0.0', () => {
         logger.info(`Listening on port ${config.port}`);
     });
+    
 });
 
 const exitHandler = () => {
