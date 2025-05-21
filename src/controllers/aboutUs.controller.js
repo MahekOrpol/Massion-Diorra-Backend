@@ -1,7 +1,7 @@
 const httpStatus = require('http-status');
 const Joi = require('joi');
 const { AboutUs } = require('../models');
-const { saveFile } = require('../utils/helper');
+const { saveFile, removeFile } = require('../utils/helper');
 
 const createAboutUs = {
     validation: {
@@ -43,15 +43,61 @@ const updateAboutUs = {
             tagline: Joi.string(),
             aboutDescription: Joi.string(),
             goalDescription: Joi.string(),
-            aboutImg: Joi.string(),
-            goalImg: Joi.string(),
+            aboutImg: Joi.string().allow(null, '').optional(),  // allow empty for removal
+            goalImg: Joi.string().allow(null, '').optional(),
         }),
     },
     handler: async (req, res) => {
-        const aboutUs = await AboutUs.findOneAndUpdate({ _id: req.params.id }, req.body, { new: true });
+        const diamondShapeExists = await AboutUs.findById(req.params.id);
+        if (!diamondShapeExists) {
+            return res.status(httpStatus.BAD_REQUEST).send({ message: "AboutUs record not found" });
+        }
+
+        // Save new files if uploaded
+        let aboutImg = req.files?.aboutImg ? await saveFile(req.files.aboutImg) : null;
+        let goalImg = req.files?.goalImg ? await saveFile(req.files.goalImg) : null;
+
+        // Remove old images if new ones uploaded
+        if (aboutImg && diamondShapeExists.aboutImg) {
+            await removeFile(diamondShapeExists.aboutImg);
+        }
+        if (goalImg && diamondShapeExists.goalImg) {
+            await removeFile(diamondShapeExists.goalImg);
+        }
+
+        // Build update object starting from req.body
+        const updateData = { ...req.body };
+
+        // Override with new image paths if any
+        if (aboutImg) {
+            updateData.aboutImg = aboutImg.upload_path;
+        } else if ('aboutImg' in req.body && (req.body.aboutImg === '' || req.body.aboutImg === null)) {
+            // Remove image if explicitly set to empty/null
+            if (diamondShapeExists.aboutImg) {
+                await removeFile(diamondShapeExists.aboutImg);
+            }
+            updateData.aboutImg = null;
+        }
+
+        if (goalImg) {
+            updateData.goalImg = goalImg.upload_path;
+        } else if ('goalImg' in req.body && (req.body.goalImg === '' || req.body.goalImg === null)) {
+            if (diamondShapeExists.goalImg) {
+                await removeFile(diamondShapeExists.goalImg);
+            }
+            updateData.goalImg = null;
+        }
+
+        const aboutUs = await AboutUs.findOneAndUpdate(
+            { _id: req.params.id },
+            updateData,
+            { new: true }
+        );
+
         return res.send(aboutUs);
     }
 };
+
 
 const deleteAboutUs = {
     handler: async (req, res) => {
