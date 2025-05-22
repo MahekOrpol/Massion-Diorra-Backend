@@ -381,7 +381,7 @@ const getStyle = {
 
     return res.status(httpStatus.OK).json({
       success: true,
-      subcategories: category.style || [],
+      Style: category.style || [],
     });
   },
 }
