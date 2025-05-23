@@ -64,45 +64,53 @@ handler: async (req, res) => {
 },
 };
 const updateDiamondShape = {
-handler: async (req, res) => {
-  try {
-    const { _id } = req.params;
-    const { diamondShape } = req.body;
+  handler: async (req, res) => {
+    try {
+      const { _id } = req.params;
+      const { diamondShape } = req.body;
 
-    let diamondImage = req.files.diamondImage
-    ? await saveFile(req.files.diamondImage)
-    : null;
-    // Check if diamond shape already exists
-    const diamondShapeExists = await DiamondShape.findById(_id);
-    if (!diamondShapeExists) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Diamond shape not found");
+      // Find the existing diamond shape
+      const diamondShapeExists = await DiamondShape.findById(_id);
+      if (!diamondShapeExists) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Diamond shape not found");
+      }
+
+      // Save new image if uploaded
+      let diamondImage = req.files?.diamondImage
+        ? await saveFile(req.files.diamondImage)
+        : null;
+
+      // Remove old image only if new one is uploaded
+      if (diamondImage && diamondShapeExists.diamondImage) {
+        await removeFile(diamondShapeExists.diamondImage);
+      }
+
+      // Update fields
+      diamondShapeExists.diamondShape = diamondShape;
+      diamondShapeExists.diamondImage = diamondImage
+        ? diamondImage.upload_path
+        : diamondShapeExists.diamondImage; // Retain old image if no new one
+
+      await diamondShapeExists.save();
+
+      return res.status(httpStatus.OK).json({
+        success: true,
+        message: "Diamond shape updated successfully",
+        data: {
+          id: diamondShapeExists._id,
+          diamondShape: diamondShapeExists.diamondShape,
+          diamondImage: diamondShapeExists.diamondImage,
+          createdAt: diamondShapeExists.createdAt,
+        },
+      });
+    } catch (error) {
+      return res
+        .status(httpStatus.INTERNAL_SERVER_ERROR)
+        .send({ message: error.message });
     }
-    
-    if (diamondImage && diamondShapeExists.diamondImage) {
-      await removeFile(diamondShapeExists.diamondImage);
-    }
-
-    // Update diamond shape
-    diamondShapeExists.diamondShape = diamondShape;
-    await diamondShapeExists.save();
-    return res.status(httpStatus.OK).json({
-      success: true,
-      message: "Diamond shape updated successfully",
-      data: {
-        id: diamondShapeExists._id,
-        diamondShape: diamondShapeExists.diamondShape,
-        createdAt: diamondShapeExists.createdAt,
-      diamondImage: diamondImage?.upload_path,
-
-      },
-    });
-  } catch (error) {
-    return res
-      .status(httpStatus.INTERNAL_SERVER_ERROR)
-      .send({ message: error.message });
-  }
-},
+  },
 };
+
 const deleteDiamondShape = {
 handler: async (req, res) => {
   try {

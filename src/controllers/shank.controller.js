@@ -64,44 +64,51 @@ handler: async (req, res) => {
 },
 };
 const updateShank = {
-handler: async (req, res) => {
-  try {
-    const { _id } = req.params;
-    const { shank } = req.body;
+  handler: async (req, res) => {
+    try {
+      const { _id } = req.params;
+      const { shank } = req.body;
 
-    let image = req.files.image
-    ? await saveFile(req.files.image)
-    : null;
-    // Check if diamond shape already exists
-    const diamondShapeExists = await Shank.findById(_id);
-    if (!diamondShapeExists) {
+      // Find the existing diamond shape
+      const diamondShapeExists = await Shank.findById(_id);
+      if (!diamondShapeExists) {
       throw new ApiError(httpStatus.BAD_REQUEST, "Shank not found");
-    }
-    
-    if (image && diamondShapeExists.image) {
-      await removeFile(diamondShapeExists.image);
-    }
+      }
 
-    // Update diamond shape
-    diamondShapeExists.shank = shank;
-    await diamondShapeExists.save();
-    return res.status(httpStatus.OK).json({
-      success: true,
+      // Save new image if uploaded
+      let image = req.files?.image
+        ? await saveFile(req.files.image)
+        : null;
+
+      // Remove old image only if new one is uploaded
+      if (image && diamondShapeExists.image) {
+        await removeFile(diamondShapeExists.image);
+      }
+
+      // Update fields
+      diamondShapeExists.shank = shank;
+      diamondShapeExists.image = image
+        ? image.upload_path
+        : diamondShapeExists.image; // Retain old image if no new one
+
+      await diamondShapeExists.save();
+
+      return res.status(httpStatus.OK).json({
+        success: true,
       message: "Shank updated successfully",
-      data: {
-        id: diamondShapeExists._id,
-        shank: diamondShapeExists.shank,
-        createdAt: diamondShapeExists.createdAt,
-      image: image?.upload_path,
-
-      },
-    });
-  } catch (error) {
-    return res
-      .status(httpStatus.INTERNAL_SERVER_ERROR)
-      .send({ message: error.message });
-  }
-},
+        data: {
+          id: diamondShapeExists._id,
+          shank: diamondShapeExists.shank,
+          image: diamondShapeExists.image,
+          createdAt: diamondShapeExists.createdAt,
+        },
+      });
+    } catch (error) {
+      return res
+        .status(httpStatus.INTERNAL_SERVER_ERROR)
+        .send({ message: error.message });
+    }
+  },
 };
 const deleteShank = {
 handler: async (req, res) => {
