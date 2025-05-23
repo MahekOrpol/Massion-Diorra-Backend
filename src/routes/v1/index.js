@@ -21,6 +21,7 @@ const authRoute= require("./auth.route");
 const reviewRoute= require("./review.route");
 const metalRoute= require("./metal.route");
 const diamondShapeRoute= require("./diamondShape.route");
+const shankRoute= require("./shank.route");
 
 const defaultRoutes = [
  
@@ -109,6 +110,10 @@ const defaultRoutes = [
   {
     path:'/diamond-shape',
     route: diamondShapeRoute,
+  },
+  {
+    path:'/shank',
+    route: shankRoute,
   },
 ];
 
