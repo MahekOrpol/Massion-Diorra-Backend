@@ -811,148 +811,319 @@ const getOnSale = {
 };
 
 const updateProducts = {
-  handler: async (req, res) => {
-    const { _id } = req.params;
-
-    let product = await Products.findById(_id).populate("variations");
-    if (!product) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
-    }
-
-    // Check if product name already exists for a different product
-    const productsWithNameExists = await Products.findOne({
-      productName: req.body?.productName,
-      _id: { $ne: _id },
-    }).exec();
-
-    if (productsWithNameExists) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Product name already exists");
-    }
-
-    // Type conversions
-    req.body.discount = parseFloat(req.body.discount) || 0;
-    req.body.salePrice = parseFloat(req.body.salePrice);
-    req.body.regularPrice = parseFloat(req.body.regularPrice);
-
-    // Handle variations
-    let { hasVariations, variations } = req.body;
-    hasVariations = String(hasVariations).trim().toLowerCase() === "true";
-
-    if (hasVariations) {
-      if (typeof variations === "string") {
-        try {
-          variations = JSON.parse(variations);
-        } catch (error) {
-          return res.status(400).json({ message: "Invalid variations format" });
+  validation: {
+    body: Joi.object()
+      .keys({
+        categoryName: Joi.string().required(),
+        productName: Joi.string().required(),
+        productsDescription: Joi.string().required(),
+        regularPrice: Joi.number().precision(2).required(),
+        salePrice: Joi.number().precision(2).required(),
+        discount: Joi.number().precision(2).default(0),
+        stock: Joi.string().required(),
+        sku: Joi.string().required(),
+        best_selling: Joi.string().default("0"),
+        gender: Joi.string().default(""),
+        hasVariations: Joi.boolean().default(false),
+        variations: Joi.alternatives()
+          .try(
+            Joi.array().items(
+              Joi.object({
+                metalVariations: Joi.array()
+                  .items(
+                    Joi.object({
+                      metal: Joi.string().required(),
+                      quantity: Joi.string().required(),
+                      images: Joi.array().items(Joi.string()).default([]),
+                      diamondShape: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
+                      style: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
+                      shank: Joi.array()
+                        .items(
+                          Joi.object({
+                            name: Joi.string().required(),
+                            image: Joi.string().required(),
+                          })
+                        )
+                        .required(),
+                      ringSizes: Joi.array()
+                        .items(
+                          Joi.object({
+                            productSize: Joi.string().required(),
+                            regularPrice: Joi.number().precision(2).required(),
+                            salePrice: Joi.number().precision(2).required(),
+                            quantity: Joi.number().required(),
+                          })
+                        )
+                        .required(),
+                    })
+                  )
+                  .required(),
+              })
+            ),
+            Joi.string()
+          )
+          .when("hasVariations", {
+            is: true,
+            then: Joi.required(),
+            otherwise: Joi.optional(),
+          }),
+        combinationData: Joi.alternatives()
+          .try(
+            Joi.array().items(
+              Joi.object({
+                metal: Joi.string().required(),
+                diamondShape: Joi.string().required(),
+                style: Joi.string().required(),
+                shank: Joi.string().required(),
+                imageKeys: Joi.array().items(Joi.string()).required(),
+              })
+            ),
+            Joi.string()
+          )
+          .optional()
+          .default([]),
+      })
+      .custom((value, helpers) => {
+        if (value.salePrice > value.regularPrice) {
+          return helpers.error(
+            "Sale price cannot be greater than regular price"
+          );
         }
+        return value;
+      }),
+  },
+
+  handler: async (req, res) => {
+    try {
+      const { _id } = req.params;
+      let {
+        categoryName,
+        productName,
+        productsDescription,
+        regularPrice,
+        salePrice,
+        discount,
+        stock,
+        sku,
+        best_selling,
+        gender,
+        hasVariations,
+        variations,
+        combinationData,
+      } = req.body;
+
+      // Find existing product
+      let product = await Products.findById(_id).populate("variations");
+      if (!product) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
       }
 
-      if (!Array.isArray(variations)) {
-        return res.status(400).json({ message: "Variations must be an array" });
+      // Check if product name already exists for a different product
+      const productsWithNameExists = await Products.findOne({
+        productName,
+        _id: { $ne: _id },
+      });
+
+      if (productsWithNameExists) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Product name already exists");
       }
 
-      // Process images for each metal variation
-      for (const variation of variations) {
-        for (const metalVariation of variation.metalVariations) {
-          const metalKey = metalVariation.metal.replace(/\s+/g, "_"); // Convert spaces to underscores
-          if (req.files && req.files[`images_${metalKey}`]) {
-            const filesArray = Array.isArray(req.files[`images_${metalKey}`])
-              ? req.files[`images_${metalKey}`]
-              : [req.files[`images_${metalKey}`]];
+      // Convert hasVariations to boolean
+      hasVariations = String(hasVariations).trim().toLowerCase() === "true";
 
-            if (metalVariation.images && metalVariation.images.length > 0) {
-              for (const oldImagePath of metalVariation.images) {
-                await removeFile(oldImagePath); // Helper to delete old images
+      // Parse variations if provided
+      if (hasVariations) {
+        if (typeof variations === "string") {
+          try {
+            variations = JSON.parse(variations);
+            if (variations && variations.metalVariations) {
+              variations = [{ metalVariations: variations.metalVariations }];
+            } else if (!Array.isArray(variations)) {
+              throw new Error("Invalid variations format");
+            }
+          } catch (error) {
+            throw new ApiError(
+              httpStatus.BAD_REQUEST,
+              "Invalid variations data format"
+            );
+          }
+        } else if (!Array.isArray(variations)) {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            "Variations must be an array"
+          );
+        }
+      } else {
+        variations = [];
+      }
+
+      // Parse combinationData if provided
+      if (typeof combinationData === "string") {
+        try {
+          combinationData = JSON.parse(combinationData);
+          if (!Array.isArray(combinationData)) {
+            combinationData = []; // Ensure it's an array
+          }
+        } catch (error) {
+          console.error("Error parsing combinationData:", error);
+          combinationData = [];
+        }
+      } else if (!Array.isArray(combinationData)) {
+        combinationData = [];
+      }
+
+      // Delete old variations and their images
+      if (product.variations && product.variations.length > 0) {
+        for (const variation of product.variations) {
+          if (variation.metalVariations && variation.metalVariations.length > 0) {
+            for (const metalVariation of variation.metalVariations) {
+              if (metalVariation.images && metalVariation.images.length > 0) {
+                for (const imagePath of metalVariation.images) {
+                  if (imagePath) {
+                    await removeFile(imagePath);
+                  }
+                }
               }
             }
-
-            const imagePaths = [];
-            for (const file of filesArray) {
-              const { upload_path } = await saveFile(file);
-              imagePaths.push(upload_path);
-            }
-            metalVariation.images = imagePaths;
           }
         }
+        await ProductVariations.deleteMany({ productId: _id });
       }
 
-      // Track variations
-      const existingVariationIds = product.variations.map((v) =>
-        v._id.toString()
-      );
-      const newVariationDocs = [];
+      // Update product fields
+      product.productName = productName;
+      product.productsDescription = productsDescription;
+      product.categoryName = categoryName;
+      product.regularPrice = regularPrice;
+      product.salePrice = salePrice;
+      product.discount = discount;
+      product.stock = stock;
+      product.sku = sku;
+      product.best_selling = best_selling;
+      product.gender = gender;
+      product.hasVariations = hasVariations;
 
-      for (const variation of variations) {
-        if (variation._id && existingVariationIds.includes(variation._id)) {
-          // Update existing variation
-          await ProductVariations.findByIdAndUpdate(variation._id, {
-            metalVariations: variation.metalVariations,
-          });
-        } else {
-          // Create new variation
-          newVariationDocs.push({
-            productId: product._id,
-            metalVariations: variation.metalVariations,
-          });
+      if (hasVariations && Array.isArray(variations)) {
+        for (const variation of variations) {
+          for (const metalVariation of variation.metalVariations) {
+            const metalKey = metalVariation.metal.replace(/\s+/g, "_");
+
+            // Process main images
+            if (req.files && req.files[`images_${metalKey}`]) {
+              const filesArray = Array.isArray(req.files[`images_${metalKey}`])
+                ? req.files[`images_${metalKey}`]
+                : [req.files[`images_${metalKey}`]];
+
+              const imagePaths = [];
+              for (const file of filesArray) {
+                const { upload_path } = await saveFile(file);
+                imagePaths.push(upload_path);
+              }
+              metalVariation.images = imagePaths;
+            }
+
+            metalVariation.combinationImages = [];
+
+            if (Array.isArray(combinationData) && combinationData.length > 0) {
+              for (const combo of combinationData) {
+                if (combo.metal === metalVariation.metal) {
+                  const diamondShapeExists = metalVariation.diamondShape && metalVariation.diamondShape.some(
+                    (ds) => ds.name === combo.diamondShape
+                  );
+                  const shankExists = metalVariation.shank && metalVariation.shank.some(
+                    (s) => s.name === combo.shank
+                  );
+                  const styleExists = metalVariation.style && metalVariation.style.some(
+                    (s) => s.name === combo.style
+                  );
+
+                  if (diamondShapeExists && shankExists && styleExists) {
+                    const comboImages = [];
+
+                    for (const imageKey of combo.imageKeys) {
+                      if (req.files && req.files[imageKey]) {
+                        const filesToSave = Array.isArray(req.files[imageKey])
+                          ? req.files[imageKey]
+                          : [req.files[imageKey]];
+
+                        for (const file of filesToSave) {
+                          try {
+                            const { upload_path } = await saveFile(file);
+                            comboImages.push(upload_path);
+                          } catch (error) {
+                            console.error(
+                              `Error saving file ${imageKey}:`,
+                              error
+                            );
+                          }
+                        }
+                      }
+                    }
+
+                    if (comboImages.length > 0) {
+                      metalVariation.combinationImages.push({
+                        diamondShape: combo.diamondShape,
+                        shank: combo.shank,
+                        style: combo.style,
+                        images: comboImages,
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
+
+        const variationDocs = variations.map((variation) => ({
+          productId: product._id,
+          metalVariations: variation.metalVariations,
+        }));
+
+        const savedVariations = await ProductVariations.insertMany(
+          variationDocs
+        );
+        product.variations = savedVariations.map((variation) => variation._id);
+      } else {
+        product.variations = [];
       }
 
-      // Save new variations
-      const savedVariations = await ProductVariations.insertMany(
-        newVariationDocs
-      );
-      const newVariationIds = savedVariations.map((v) => v._id.toString());
-      const existingVariationIdsToKeep = variations
-        .map((v) => v._id)
-        .filter((id) => id && existingVariationIds.includes(id));
+      await product.save();
 
-      const updatedVariationIds = [
-        ...existingVariationIdsToKeep,
-        ...newVariationIds,
-      ];
+      const updatedProduct = await Products.findById(product._id)
+        .populate({
+          path: "variations",
+          populate: {
+            path: "metalVariations",
+          },
+        })
+        .lean();
 
-      // Remove deleted variations
-      const variationsToDelete = existingVariationIds.filter(
-        (id) => !updatedVariationIds.includes(id)
-      );
-
-      if (variationsToDelete.length > 0) {
-        await ProductVariations.deleteMany({
-          _id: { $in: variationsToDelete },
-        });
+      return res.status(httpStatus.OK).send(updatedProduct);
+    } catch (error) {
+      console.error("Error in update product handler:", error);
+      if (error instanceof ApiError) {
+        throw error;
       }
-
-      product.variations = updatedVariationIds;
-    } else {
-      // No variations - delete all
-      await ProductVariations.deleteMany({ productId: product._id });
-      product.variations = [];
+      throw new ApiError(
+        httpStatus.INTERNAL_SERVER_ERROR,
+        "Product update failed"
+      );
     }
-
-    // Update allowed fields only
-    const fieldsToUpdate = [
-      "productName",
-      "productsDescription",
-      "regularPrice",
-      "salePrice",
-      "stock",
-      "gender",
-      "discount",
-      "best_selling",
-      "sku",
-      "categoryName",
-    ];
-
-    fieldsToUpdate.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        product[field] = req.body[field];
-      }
-    });
-
-    await product.save();
-
-    const updatedProduct = await Products.findById(_id).populate("variations");
-    return res.status(httpStatus.OK).send(updatedProduct);
   },
 };
 
