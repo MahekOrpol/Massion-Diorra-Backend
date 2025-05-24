@@ -96,7 +96,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: 'http://localhost:3001', // Allow your client to make requests
+  origin: 'http://localhost:3000', // Allow your client to make requests
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
